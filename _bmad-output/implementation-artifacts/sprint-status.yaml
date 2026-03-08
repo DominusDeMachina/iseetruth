@@ -1,0 +1,90 @@
+# generated: 2026-03-08
+# project: OSINT
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog -> in-progress: Automatically when first story is created (via create-story)
+#   - in-progress -> done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-03-08
+project: OSINT
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  # Epic 1: Project Foundation & Infrastructure Setup
+  epic-1: in-progress
+  1-1-monorepo-scaffolding-docker-compose-infrastructure: done
+  1-2-backend-health-checks-model-readiness: backlog
+  1-3-frontend-shell-with-system-status-page: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Investigation & Document Management
+  epic-2: backlog
+  2-1-investigation-crud-api-list-view: backlog
+  2-2-pdf-upload-with-immutable-storage: backlog
+  2-3-async-document-processing-pipeline-with-text-extraction: backlog
+  2-4-real-time-processing-dashboard-with-sse: backlog
+  2-5-extracted-text-viewer: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Entity Extraction & Knowledge Graph Construction
+  epic-3: backlog
+  3-1-document-chunking-llm-integration-layer: backlog
+  3-2-entity-relationship-extraction-via-local-llm: backlog
+  3-3-provenance-chain-evidence-storage: backlog
+  3-4-vector-embedding-generation-storage: backlog
+  3-5-document-level-entity-level-confidence-display: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Graph Visualization & Exploration
+  epic-4: backlog
+  4-1-graph-api-subgraph-queries: backlog
+  4-2-interactive-graph-canvas-with-cytoscape-js: backlog
+  4-3-node-edge-interaction-with-entity-detail-card: backlog
+  4-4-graph-filtering-by-entity-type-source-document: backlog
+  4-5-entity-search-with-graph-highlighting: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Natural Language Q&A with Source Citations
+  epic-5: backlog
+  5-1-graph-first-query-pipeline: backlog
+  5-2-answer-streaming-qa-panel: backlog
+  5-3-citation-click-through-viewer: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: System Resilience & Error Recovery
+  epic-6: backlog
+  6-1-failed-document-detection-manual-retry: backlog
+  6-2-auto-retry-on-service-recovery: backlog
+  6-3-per-service-graceful-degradation: backlog
+  6-4-service-status-display-error-boundaries: backlog
+  epic-6-retrospective: optional

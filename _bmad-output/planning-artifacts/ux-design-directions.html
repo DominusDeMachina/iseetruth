@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OSINT — Design Direction Exploration</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg-primary: #1a1816;
+    --bg-secondary: #232019;
+    --bg-elevated: #2d2a23;
+    --bg-hover: #38342b;
+    --border-subtle: #3d3830;
+    --border-strong: #5c5548;
+    --text-primary: #e8e0d4;
+    --text-secondary: #a89f90;
+    --text-muted: #7a7168;
+    --entity-person: #6b9bd2;
+    --entity-org: #7dab8f;
+    --entity-location: #c4a265;
+    --status-success: #7dab8f;
+    --status-warning: #c4a265;
+    --status-error: #c47070;
+    --status-info: #6b9bd2;
+    --citation-link: #9b8ec4;
+  }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #111;
+    color: var(--text-primary);
+    line-height: 1.5;
+  }
+
+  /* Navigation */
+  .nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(17,17,17,0.95);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .nav h1 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-right: 24px;
+    white-space: nowrap;
+  }
+  .nav-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .nav-btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .nav-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .nav-btn.active {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+  }
+
+  /* Sections */
+  .section {
+    display: none;
+    min-height: 100vh;
+    padding-top: 64px;
+  }
+  .section.active { display: block; }
+
+  /* Overview */
+  .overview {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 48px 24px;
+  }
+  .overview h2 {
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .overview p {
+    color: var(--text-secondary);
+    font-size: 15px;
+    line-height: 1.7;
+    margin-bottom: 24px;
+    max-width: 680px;
+  }
+  .direction-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    margin-top: 32px;
+  }
+  .direction-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .direction-card:hover {
+    border-color: var(--border-strong);
+    background: var(--bg-elevated);
+    transform: translateY(-2px);
+  }
+  .direction-card h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .direction-card .subtitle {
+    font-size: 13px;
+    color: var(--citation-link);
+    margin-bottom: 10px;
+  }
+  .direction-card p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+  }
+
+  /* Mockup Frame */
+  .mockup-frame {
+    width: 100%;
+    height: calc(100vh - 64px);
+    background: var(--bg-primary);
+    position: relative;
+    overflow: hidden;
+  }
+  .mockup-label {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    background: rgba(26,24,22,0.9);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 12px 16px;
+    max-width: 320px;
+  }
+  .mockup-label h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .mockup-label p { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+
+  /* === DIRECTION A: Balanced Workspace === */
+  .dir-a {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    grid-template-rows: 48px 1fr 32px;
+    height: 100%;
+  }
+  .dir-a .header {
+    grid-column: 1 / -1;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 16px;
+  }
+  .dir-a .header .inv-title {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .dir-a .header .stats {
+    display: flex;
+    gap: 12px;
+    margin-left: auto;
+  }
+  .dir-a .header .stat {
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .dir-a .header .stat .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .dir-a .qa-panel {
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .dir-a .qa-content {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+  }
+  .dir-a .qa-input-area {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .dir-a .qa-input {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    outline: none;
+  }
+  .dir-a .qa-input::placeholder { color: var(--text-muted); }
+  .dir-a .graph-panel {
+    background: var(--bg-primary);
+    position: relative;
+  }
+  .dir-a .statusbar {
+    grid-column: 1 / -1;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-subtle);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 16px;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .dir-a .statusbar .health {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .dir-a .statusbar .health .indicator {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--status-success);
+  }
+
+  /* Answer styling */
+  .answer-block {
+    margin-bottom: 20px;
+  }
+  .answer-question {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+  .answer-text {
+    font-family: 'Source Serif 4', Georgia, serif;
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--text-primary);
+  }
+  .answer-text .entity {
+    color: var(--entity-person);
+    cursor: pointer;
+    border-bottom: 1px dotted rgba(107,155,210,0.4);
+  }
+  .answer-text .entity.org { color: var(--entity-org); border-bottom-color: rgba(125,171,143,0.4); }
+  .answer-text .entity.loc { color: var(--entity-location); border-bottom-color: rgba(196,162,101,0.4); }
+  .answer-text sup {
+    color: var(--citation-link);
+    cursor: pointer;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    margin: 0 1px;
+  }
+  .answer-text sup:hover { text-decoration: underline; }
+  .citation-list {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .citation-item {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 4px 0;
+    display: flex;
+    gap: 8px;
+  }
+  .citation-item .num {
+    color: var(--citation-link);
+    font-weight: 600;
+    min-width: 16px;
+  }
+  .citation-item .source { color: var(--text-muted); }
+
+  /* Graph simulation */
+  .graph-sim {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .graph-node {
+    position: absolute;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  .graph-node:hover { transform: scale(1.15); z-index: 5; }
+  .graph-node.person { background: var(--entity-person); }
+  .graph-node.org { background: var(--entity-org); }
+  .graph-node.location { background: var(--entity-location); }
+  .graph-node.highlighted {
+    box-shadow: 0 0 0 3px rgba(255,255,255,0.2), 0 2px 12px rgba(0,0,0,0.4);
+  }
+  .graph-node .label {
+    position: absolute;
+    bottom: -18px;
+    white-space: nowrap;
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-align: center;
+  }
+  .graph-edge {
+    position: absolute;
+    height: 1px;
+    background: var(--border-subtle);
+    transform-origin: left center;
+    pointer-events: none;
+  }
+  .graph-edge.highlighted { background: var(--text-secondary); height: 2px; }
+
+  /* Entity detail overlay */
+  .entity-card {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 260px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 16px;
+    z-index: 10;
+  }
+  .entity-card .ec-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .entity-card .ec-badge {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+  .entity-card .ec-name {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .entity-card .ec-type {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: auto;
+  }
+  .entity-card .ec-section {
+    margin-bottom: 10px;
+  }
+  .entity-card .ec-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .entity-card .ec-row {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 2px 0;
+    display: flex;
+    justify-content: space-between;
+  }
+  .entity-card .ec-row .val { color: var(--text-primary); }
+  .entity-card .ec-confidence {
+    height: 3px;
+    background: var(--border-subtle);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .entity-card .ec-confidence-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--status-success);
+  }
+
+  /* Graph filter bar */
+  .graph-filters {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    display: flex;
+    gap: 6px;
+    z-index: 10;
+  }
+  .filter-chip {
+    padding: 4px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--border-subtle);
+    background: rgba(35,32,25,0.9);
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .filter-chip .chip-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .filter-chip.active {
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+  }
+
+  /* === DIRECTION B: Prose-Forward === */
+  .dir-b {
+    display: grid;
+    grid-template-columns: 480px 1fr;
+    grid-template-rows: 48px 1fr 32px;
+    height: 100%;
+  }
+  .dir-b .header { grid-column: 1 / -1; background: var(--bg-secondary); border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; padding: 0 20px; gap: 16px; }
+  .dir-b .header .inv-title { font-size: 14px; font-weight: 600; }
+  .dir-b .qa-panel { background: var(--bg-secondary); border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; }
+  .dir-b .qa-content { flex: 1; padding: 28px 24px; overflow-y: auto; }
+  .dir-b .qa-input-area { padding: 16px 24px; border-top: 1px solid var(--border-subtle); }
+  .dir-b .qa-input { width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border-subtle); background: var(--bg-primary); color: var(--text-primary); font-family: 'Source Serif 4', serif; font-size: 15px; outline: none; }
+  .dir-b .qa-input::placeholder { color: var(--text-muted); font-family: 'Source Serif 4', serif; }
+  .dir-b .graph-panel { background: var(--bg-primary); position: relative; }
+  .dir-b .statusbar { grid-column: 1 / -1; background: var(--bg-secondary); border-top: 1px solid var(--border-subtle); display: flex; align-items: center; padding: 0 16px; font-size: 11px; color: var(--text-muted); }
+  .dir-b .answer-text { font-size: 16px; line-height: 1.8; }
+  .dir-b .suggested-questions { margin-top: 16px; }
+  .dir-b .sq-label { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; }
+  .dir-b .sq-item {
+    padding: 8px 12px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .dir-b .sq-item:hover { border-color: var(--border-strong); color: var(--text-primary); background: var(--bg-hover); }
+
+  /* === DIRECTION C: Graph-Dominant === */
+  .dir-c {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: 48px 1fr;
+    height: 100%;
+  }
+  .dir-c .header { background: var(--bg-secondary); border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; padding: 0 16px; gap: 16px; }
+  .dir-c .header .inv-title { font-size: 14px; font-weight: 600; }
+  .dir-c .workspace { position: relative; background: var(--bg-primary); }
+  .dir-c .floating-qa {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 560px;
+    z-index: 20;
+  }
+  .dir-c .fq-input-wrap {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    padding: 4px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .dir-c .fq-input {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 10px;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    outline: none;
+  }
+  .dir-c .fq-input::placeholder { color: var(--text-muted); }
+  .dir-c .floating-answer {
+    position: absolute;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 560px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    padding: 20px;
+    z-index: 20;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    max-height: 280px;
+    overflow-y: auto;
+  }
+
+  /* === DIRECTION D: Focused Investigation === */
+  .dir-d {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    grid-template-rows: 1fr;
+    height: 100%;
+  }
+  .dir-d .sidebar {
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 0;
+    gap: 8px;
+  }
+  .dir-d .sidebar .sb-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.15s;
+  }
+  .dir-d .sidebar .sb-icon:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .dir-d .sidebar .sb-icon.active { background: var(--bg-elevated); color: var(--text-primary); }
+  .dir-d .main-area {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    grid-template-rows: 1fr;
+  }
+  .dir-d .qa-panel { background: var(--bg-secondary); border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; }
+  .dir-d .qa-header { padding: 14px 16px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .dir-d .qa-content { flex: 1; padding: 16px; overflow-y: auto; }
+  .dir-d .qa-input-area { padding: 12px; border-top: 1px solid var(--border-subtle); }
+  .dir-d .qa-input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-primary); color: var(--text-primary); font-family: 'Inter', sans-serif; font-size: 13px; outline: none; }
+  .dir-d .graph-panel { background: var(--bg-primary); position: relative; }
+
+  /* === DIRECTION E: Tabbed Workspace === */
+  .dir-e {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: 48px 40px 1fr 32px;
+    height: 100%;
+  }
+  .dir-e .header { background: var(--bg-secondary); border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; padding: 0 16px; gap: 16px; }
+  .dir-e .header .inv-title { font-size: 14px; font-weight: 600; }
+  .dir-e .tabs {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    padding: 0 16px;
+    gap: 0;
+  }
+  .dir-e .tab {
+    padding: 10px 20px;
+    font-size: 13px;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .dir-e .tab:hover { color: var(--text-secondary); }
+  .dir-e .tab.active { color: var(--text-primary); border-bottom-color: var(--citation-link); }
+  .dir-e .content { display: grid; grid-template-columns: 380px 1fr; background: var(--bg-primary); }
+  .dir-e .qa-panel { background: var(--bg-secondary); border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; }
+  .dir-e .qa-content { flex: 1; padding: 20px; overflow-y: auto; }
+  .dir-e .qa-input-area { padding: 12px 16px; border-top: 1px solid var(--border-subtle); }
+  .dir-e .qa-input { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-primary); color: var(--text-primary); font-family: 'Inter', sans-serif; font-size: 14px; outline: none; }
+  .dir-e .graph-panel { position: relative; }
+  .dir-e .statusbar { background: var(--bg-secondary); border-top: 1px solid var(--border-subtle); display: flex; align-items: center; padding: 0 16px; font-size: 11px; color: var(--text-muted); }
+
+  /* === DIRECTION F: Narrative Flow === */
+  .dir-f {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: 48px 1fr;
+    height: 100%;
+  }
+  .dir-f .header { background: var(--bg-secondary); border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; padding: 0 16px; gap: 16px; }
+  .dir-f .header .inv-title { font-size: 14px; font-weight: 600; }
+  .dir-f .workspace {
+    display: grid;
+    grid-template-rows: 1fr auto;
+    background: var(--bg-primary);
+    position: relative;
+  }
+  .dir-f .graph-area { position: relative; }
+  .dir-f .narrative-drawer {
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-subtle);
+    border-radius: 16px 16px 0 0;
+    padding: 16px 24px 12px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .dir-f .drawer-handle {
+    width: 40px;
+    height: 4px;
+    background: var(--border-subtle);
+    border-radius: 2px;
+    margin: 0 auto 12px;
+  }
+  .dir-f .qa-input { width: 100%; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-subtle); background: var(--bg-primary); color: var(--text-primary); font-family: 'Inter', sans-serif; font-size: 14px; outline: none; margin-top: 12px; }
+
+  /* Processing view */
+  .processing-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .processing-card .pc-status {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .processing-card .pc-name {
+    font-size: 13px;
+    color: var(--text-primary);
+    flex: 1;
+  }
+  .processing-card .pc-detail {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .progress-bar {
+    height: 3px;
+    background: var(--border-subtle);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--status-info);
+    transition: width 0.3s;
+  }
+
+  /* Comparison view */
+  .comparison {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 48px 24px;
+  }
+  .comparison h2 { font-size: 24px; font-weight: 600; margin-bottom: 24px; }
+  .comp-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .comp-table th {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 2px solid var(--border-subtle);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .comp-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    vertical-align: top;
+  }
+  .comp-table td:first-child { color: var(--text-primary); font-weight: 500; }
+  .comp-table tr:hover td { background: var(--bg-secondary); }
+  .comp-highlight { color: var(--status-success) !important; font-weight: 500 !important; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <h1>OSINT Design Directions</h1>
+  <div class="nav-buttons">
+    <button class="nav-btn active" onclick="showSection('overview')">Overview</button>
+    <button class="nav-btn" onclick="showSection('dir-a')">A: Balanced</button>
+    <button class="nav-btn" onclick="showSection('dir-b')">B: Prose-Forward</button>
+    <button class="nav-btn" onclick="showSection('dir-c')">C: Graph-Dominant</button>
+    <button class="nav-btn" onclick="showSection('dir-d')">D: Focused</button>
+    <button class="nav-btn" onclick="showSection('dir-e')">E: Tabbed</button>
+    <button class="nav-btn" onclick="showSection('dir-f')">F: Narrative Drawer</button>
+    <button class="nav-btn" onclick="showSection('processing')">Processing View</button>
+    <button class="nav-btn" onclick="showSection('compare')">Compare</button>
+  </div>
+</nav>
+
+<!-- Overview -->
+<div id="overview" class="section active">
+  <div class="overview">
+    <h2>Design Direction Exploration</h2>
+    <p>Six visual directions for the OSINT investigation workspace, all built on the warm dark theme with Source Serif 4 + Inter typography. Each explores a different balance between the Q&A panel and graph canvas — the core split-view decision.</p>
+    <p>Click any direction to see a full mockup with realistic content from Maria's corruption investigation.</p>
+
+    <div class="direction-grid">
+      <div class="direction-card" onclick="showSection('dir-a')">
+        <h3>A: Balanced Workspace</h3>
+        <div class="subtitle">35/65 split — recommended</div>
+        <p>Classic split view with Q&A panel left (35%), graph right (65%). Status bar at bottom. Entity detail cards overlay the graph. The default layout from our design discussions.</p>
+      </div>
+      <div class="direction-card" onclick="showSection('dir-b')">
+        <h3>B: Prose-Forward</h3>
+        <div class="subtitle">40/60 split — wider Q&A</div>
+        <p>Wider Q&A panel with generous typography. Suggested follow-up questions after each answer. Optimized for the reading experience — answers feel like a research brief.</p>
+      </div>
+      <div class="direction-card" onclick="showSection('dir-c')">
+        <h3>C: Graph-Dominant</h3>
+        <div class="subtitle">Full-screen graph + floating Q&A</div>
+        <p>Graph takes the full screen. Q&A appears as a floating command palette at the bottom. Answers float above the graph. Maximum canvas for visual exploration.</p>
+      </div>
+      <div class="direction-card" onclick="showSection('dir-d')">
+        <h3>D: Focused Investigation</h3>
+        <div class="subtitle">Icon sidebar + split view</div>
+        <p>Minimal 56px icon sidebar for navigation. Split workspace with compact Q&A panel. Maximum screen real estate for content. Feels like a modern IDE.</p>
+      </div>
+      <div class="direction-card" onclick="showSection('dir-e')">
+        <h3>E: Tabbed Workspace</h3>
+        <div class="subtitle">Tab navigation + split view</div>
+        <p>Tab bar for switching between investigation views (Investigate, Documents, Entities, Graph). Split view within the Investigate tab. Clear information hierarchy.</p>
+      </div>
+      <div class="direction-card" onclick="showSection('dir-f')">
+        <h3>F: Narrative Drawer</h3>
+        <div class="subtitle">Full graph + bottom drawer</div>
+        <p>Graph fills the workspace. Q&A lives in a pull-up drawer from the bottom — like a mobile sheet pattern adapted for desktop. Answers expand the drawer, collapse when exploring the graph.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Direction A: Balanced Workspace -->
+<div id="dir-a" class="section">
+  <div class="mockup-frame">
+    <div class="dir-a">
+      <div class="header">
+        <div class="inv-title">Deputy Mayor Construction Contracts</div>
+        <div class="stats">
+          <div class="stat"><div class="dot" style="background:var(--entity-person)"></div> 23 people</div>
+          <div class="stat"><div class="dot" style="background:var(--entity-org)"></div> 14 orgs</div>
+          <div class="stat"><div class="dot" style="background:var(--entity-location)"></div> 8 locations</div>
+          <div class="stat" style="color:var(--text-muted)">47 documents</div>
+        </div>
+      </div>
+      <div class="qa-panel">
+        <div class="qa-content">
+          <div class="answer-block">
+            <div class="answer-question">How is Deputy Mayor Horvat connected to GreenBuild LLC?</div>
+            <div class="answer-text">
+              Deputy Mayor <span class="entity">Horvat</span> is connected to <span class="entity org">GreenBuild LLC</span> through two paths: (1) Horvat signed contract award #2024-089 awarded to GreenBuild LLC<sup>[1]</sup>, and (2) Horvat's brother-in-law <span class="entity">Marko Petrovic</span> is registered director of <span class="entity org">Cascade Holdings</span>, which owns 60% of GreenBuild LLC<sup>[2]</sup><sup>[3]</sup>.
+            </div>
+            <div class="citation-list">
+              <div class="citation-item"><span class="num">[1]</span> contract-award-089.pdf, <span class="source">page 3</span></div>
+              <div class="citation-item"><span class="num">[2]</span> company-registration-2021.pdf, <span class="source">page 1</span></div>
+              <div class="citation-item"><span class="num">[3]</span> ownership-filing.pdf, <span class="source">page 4</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="qa-input-area">
+          <input class="qa-input" placeholder="Ask about your investigation..." readonly>
+        </div>
+      </div>
+      <div class="graph-panel">
+        <div class="graph-sim">
+          <div class="graph-node person highlighted" style="width:44px;height:44px;left:50%;top:35%"><span class="label">Horvat</span></div>
+          <div class="graph-node org highlighted" style="width:38px;height:38px;left:68%;top:45%"><span class="label">GreenBuild LLC</span></div>
+          <div class="graph-node person highlighted" style="width:34px;height:34px;left:58%;top:60%"><span class="label">M. Petrovic</span></div>
+          <div class="graph-node org highlighted" style="width:36px;height:36px;left:72%;top:62%"><span class="label">Cascade Holdings</span></div>
+          <div class="graph-node person" style="width:28px;height:28px;left:38%;top:25%"><span class="label">I. Novak</span></div>
+          <div class="graph-node org" style="width:30px;height:30px;left:82%;top:30%"><span class="label">City Council</span></div>
+          <div class="graph-node location" style="width:26px;height:26px;left:45%;top:50%"><span class="label">Zagreb</span></div>
+          <div class="graph-node person" style="width:24px;height:24px;left:30%;top:42%"><span class="label">A. Kovac</span></div>
+          <div class="graph-node org" style="width:28px;height:28px;left:60%;top:28%"><span class="label">BuildCo Ltd</span></div>
+          <div class="graph-node person" style="width:22px;height:22px;left:75%;top:75%"><span class="label">S. Babic</span></div>
+        </div>
+        <div class="entity-card">
+          <div class="ec-header">
+            <div class="ec-badge" style="background:var(--entity-org)"></div>
+            <div class="ec-name">Cascade Holdings</div>
+            <div class="ec-type">Organization</div>
+          </div>
+          <div class="ec-section">
+            <div class="ec-section-title">Relationships</div>
+            <div class="ec-row"><span>Director</span><span class="val" style="color:var(--entity-person)">Marko Petrovic</span></div>
+            <div class="ec-row"><span>Owns 60%</span><span class="val" style="color:var(--entity-org)">GreenBuild LLC</span></div>
+            <div class="ec-row"><span>Located in</span><span class="val" style="color:var(--entity-location)">Zagreb</span></div>
+          </div>
+          <div class="ec-section">
+            <div class="ec-section-title">Sources</div>
+            <div class="ec-row"><span>company-registration-2021.pdf</span></div>
+            <div class="ec-row"><span>ownership-filing.pdf</span></div>
+          </div>
+          <div class="ec-section">
+            <div class="ec-section-title">Confidence</div>
+            <div class="ec-confidence"><div class="ec-confidence-fill" style="width:87%"></div></div>
+            <div class="ec-row" style="margin-top:4px"><span>87% extraction confidence</span></div>
+          </div>
+        </div>
+        <div class="graph-filters">
+          <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-person)"></div> People</div>
+          <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-org)"></div> Organizations</div>
+          <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-location)"></div> Locations</div>
+        </div>
+      </div>
+      <div class="statusbar">
+        <div class="health"><div class="indicator"></div> All services healthy</div>
+        <span style="margin-left:auto">47 documents processed &middot; 67 relationships detected</span>
+      </div>
+    </div>
+    <div class="mockup-label">
+      <h3>A: Balanced Workspace</h3>
+      <p>35/65 split. Q&A left with cited answers, graph right with entity overlays. Status bar shows system health. This is the recommended default layout.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Direction B: Prose-Forward -->
+<div id="dir-b" class="section">
+  <div class="mockup-frame">
+    <div class="dir-b">
+      <div class="header">
+        <div class="inv-title">Deputy Mayor Construction Contracts</div>
+      </div>
+      <div class="qa-panel">
+        <div class="qa-content">
+          <div class="answer-block">
+            <div class="answer-question">How is Deputy Mayor Horvat connected to GreenBuild LLC?</div>
+            <div class="answer-text">
+              Deputy Mayor <span class="entity">Horvat</span> is connected to <span class="entity org">GreenBuild LLC</span> through two distinct paths that suggest a potential conflict of interest.
+              <br><br>
+              First, Horvat personally signed contract award #2024-089, which was awarded to GreenBuild LLC for the municipal parking structure project<sup>[1]</sup>. The contract value was 2.3 million EUR.
+              <br><br>
+              Second, and more significantly, Horvat's brother-in-law <span class="entity">Marko Petrovic</span> serves as registered director of <span class="entity org">Cascade Holdings</span><sup>[2]</sup>, a holding company that owns 60% of GreenBuild LLC<sup>[3]</sup>. This ownership structure was registered in 2021, three years before the contract award.
+            </div>
+            <div class="citation-list">
+              <div class="citation-item"><span class="num">[1]</span> contract-award-089.pdf, <span class="source">page 3, paragraph 2</span></div>
+              <div class="citation-item"><span class="num">[2]</span> company-registration-2021.pdf, <span class="source">page 1, section "Directors"</span></div>
+              <div class="citation-item"><span class="num">[3]</span> ownership-filing.pdf, <span class="source">page 4, ownership table</span></div>
+            </div>
+          </div>
+          <div class="suggested-questions">
+            <div class="sq-label">Follow-up questions</div>
+            <div class="sq-item">What other contracts did Horvat sign with GreenBuild-related companies?</div>
+            <div class="sq-item">Who else is connected to Cascade Holdings?</div>
+            <div class="sq-item">Were there competing bids for contract #2024-089?</div>
+          </div>
+        </div>
+        <div class="qa-input-area">
+          <input class="qa-input" placeholder="Ask a follow-up question..." readonly>
+        </div>
+      </div>
+      <div class="graph-panel">
+        <div class="graph-sim">
+          <div class="graph-node person highlighted" style="width:44px;height:44px;left:45%;top:30%"><span class="label">Horvat</span></div>
+          <div class="graph-node org highlighted" style="width:38px;height:38px;left:65%;top:45%"><span class="label">GreenBuild LLC</span></div>
+          <div class="graph-node person highlighted" style="width:34px;height:34px;left:50%;top:58%"><span class="label">M. Petrovic</span></div>
+          <div class="graph-node org highlighted" style="width:36px;height:36px;left:70%;top:62%"><span class="label">Cascade Holdings</span></div>
+          <div class="graph-node person" style="width:26px;height:26px;left:30%;top:25%"><span class="label">I. Novak</span></div>
+          <div class="graph-node org" style="width:28px;height:28px;left:80%;top:32%"><span class="label">City Council</span></div>
+          <div class="graph-node person" style="width:22px;height:22px;left:35%;top:45%"><span class="label">A. Kovac</span></div>
+        </div>
+        <div class="graph-filters">
+          <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-person)"></div> People</div>
+          <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-org)"></div> Organizations</div>
+          <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-location)"></div> Locations</div>
+        </div>
+      </div>
+      <div class="statusbar">
+        <span>All services healthy &middot; 47 documents &middot; 23 people &middot; 14 organizations &middot; 8 locations</span>
+      </div>
+    </div>
+    <div class="mockup-label">
+      <h3>B: Prose-Forward</h3>
+      <p>Wider Q&A panel (40%) with richer typography. Longer answers with more context. Suggested follow-up questions guide the investigation. Optimized for reading.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Direction C: Graph-Dominant -->
+<div id="dir-c" class="section">
+  <div class="mockup-frame">
+    <div class="dir-c">
+      <div class="header">
+        <div class="inv-title">Deputy Mayor Construction Contracts</div>
+        <div style="margin-left:auto;display:flex;gap:12px">
+          <div class="stat" style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px"><div class="dot" style="width:8px;height:8px;border-radius:50%;background:var(--entity-person)"></div> 23</div>
+          <div class="stat" style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px"><div class="dot" style="width:8px;height:8px;border-radius:50%;background:var(--entity-org)"></div> 14</div>
+          <div class="stat" style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px"><div class="dot" style="width:8px;height:8px;border-radius:50%;background:var(--entity-location)"></div> 8</div>
+        </div>
+      </div>
+      <div class="workspace">
+        <div class="graph-sim">
+          <div class="graph-node person highlighted" style="width:52px;height:52px;left:42%;top:28%"><span class="label" style="font-size:12px">Horvat</span></div>
+          <div class="graph-node org highlighted" style="width:44px;height:44px;left:62%;top:38%"><span class="label" style="font-size:12px">GreenBuild LLC</span></div>
+          <div class="graph-node person highlighted" style="width:40px;height:40px;left:52%;top:52%"><span class="label" style="font-size:12px">M. Petrovic</span></div>
+          <div class="graph-node org highlighted" style="width:42px;height:42px;left:72%;top:55%"><span class="label" style="font-size:12px">Cascade Holdings</span></div>
+          <div class="graph-node person" style="width:32px;height:32px;left:28%;top:20%"><span class="label">I. Novak</span></div>
+          <div class="graph-node org" style="width:34px;height:34px;left:82%;top:25%"><span class="label">City Council</span></div>
+          <div class="graph-node location" style="width:30px;height:30px;left:38%;top:42%"><span class="label">Zagreb</span></div>
+          <div class="graph-node person" style="width:26px;height:26px;left:22%;top:38%"><span class="label">A. Kovac</span></div>
+          <div class="graph-node org" style="width:30px;height:30px;left:55%;top:22%"><span class="label">BuildCo Ltd</span></div>
+          <div class="graph-node person" style="width:24px;height:24px;left:78%;top:70%"><span class="label">S. Babic</span></div>
+          <div class="graph-node person" style="width:28px;height:28px;left:15%;top:55%"><span class="label">D. Maric</span></div>
+          <div class="graph-node org" style="width:26px;height:26px;left:88%;top:45%"><span class="label">Apex Invest</span></div>
+        </div>
+        <div class="floating-answer">
+          <div class="answer-text" style="font-size:14px;line-height:1.7">
+            Deputy Mayor <span class="entity">Horvat</span> is connected to <span class="entity org">GreenBuild LLC</span> through two paths: (1) Horvat signed contract award #2024-089<sup>[1]</sup>, and (2) Horvat's brother-in-law <span class="entity">Marko Petrovic</span> directs <span class="entity org">Cascade Holdings</span>, which owns 60% of GreenBuild<sup>[2]</sup><sup>[3]</sup>.
+          </div>
+          <div class="citation-list" style="margin-top:8px;padding-top:8px">
+            <div class="citation-item"><span class="num">[1]</span> contract-award-089.pdf, p.3</div>
+            <div class="citation-item"><span class="num">[2]</span> company-registration-2021.pdf, p.1</div>
+            <div class="citation-item"><span class="num">[3]</span> ownership-filing.pdf, p.4</div>
+          </div>
+        </div>
+        <div class="floating-qa">
+          <div class="fq-input-wrap">
+            <input class="fq-input" placeholder="Ask about your investigation..." readonly>
+          </div>
+        </div>
+        <div class="graph-filters" style="left:50%;transform:translateX(-50%);bottom:80px">
+          <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-person)"></div> People</div>
+          <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-org)"></div> Organizations</div>
+          <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-location)"></div> Locations</div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup-label">
+      <h3>C: Graph-Dominant</h3>
+      <p>Full-screen graph with floating Q&A palette and answer overlay. Maximum visual exploration space. Answer cards float above the graph and can be dismissed. Spotlight/command-palette feel.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Direction D: Focused Investigation -->
+<div id="dir-d" class="section">
+  <div class="mockup-frame">
+    <div class="dir-d">
+      <div class="sidebar">
+        <div class="sb-icon active" title="Investigate">Q</div>
+        <div class="sb-icon" title="Documents">D</div>
+        <div class="sb-icon" title="Entities">E</div>
+        <div class="sb-icon" title="Graph">G</div>
+        <div style="flex:1"></div>
+        <div class="sb-icon" title="Settings">S</div>
+      </div>
+      <div class="main-area">
+        <div class="qa-panel">
+          <div class="qa-header">
+            <span style="color:var(--citation-link)">Q</span> Investigate
+          </div>
+          <div class="qa-content">
+            <div class="answer-block">
+              <div class="answer-question" style="font-size:12px">How is Deputy Mayor Horvat connected to GreenBuild LLC?</div>
+              <div class="answer-text" style="font-size:14px;line-height:1.65">
+                <span class="entity">Horvat</span> connects to <span class="entity org">GreenBuild LLC</span> via two paths: (1) signed contract #2024-089<sup>[1]</sup>, (2) brother-in-law <span class="entity">Marko Petrovic</span> directs <span class="entity org">Cascade Holdings</span> which owns 60% of GreenBuild<sup>[2]</sup><sup>[3]</sup>.
+              </div>
+              <div class="citation-list">
+                <div class="citation-item"><span class="num">[1]</span> contract-award-089.pdf, p.3</div>
+                <div class="citation-item"><span class="num">[2]</span> company-reg-2021.pdf, p.1</div>
+                <div class="citation-item"><span class="num">[3]</span> ownership-filing.pdf, p.4</div>
+              </div>
+            </div>
+          </div>
+          <div class="qa-input-area">
+            <input class="qa-input" placeholder="Ask a question..." readonly>
+          </div>
+        </div>
+        <div class="graph-panel">
+          <div class="graph-sim">
+            <div class="graph-node person highlighted" style="width:42px;height:42px;left:40%;top:32%"><span class="label">Horvat</span></div>
+            <div class="graph-node org highlighted" style="width:36px;height:36px;left:62%;top:42%"><span class="label">GreenBuild LLC</span></div>
+            <div class="graph-node person highlighted" style="width:32px;height:32px;left:50%;top:58%"><span class="label">M. Petrovic</span></div>
+            <div class="graph-node org highlighted" style="width:34px;height:34px;left:70%;top:60%"><span class="label">Cascade Holdings</span></div>
+            <div class="graph-node person" style="width:26px;height:26px;left:28%;top:24%"><span class="label">I. Novak</span></div>
+            <div class="graph-node org" style="width:28px;height:28px;left:78%;top:28%"><span class="label">City Council</span></div>
+            <div class="graph-node location" style="width:24px;height:24px;left:42%;top:46%"><span class="label">Zagreb</span></div>
+          </div>
+          <div class="graph-filters">
+            <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-person)"></div> People</div>
+            <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-org)"></div> Orgs</div>
+            <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-location)"></div> Locations</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup-label">
+      <h3>D: Focused Investigation</h3>
+      <p>Minimal 56px icon sidebar for navigation. Maximum content area. Clean, IDE-like feel. Compact Q&A panel with efficient typography. Navigation through single-letter icons.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Direction E: Tabbed Workspace -->
+<div id="dir-e" class="section">
+  <div class="mockup-frame">
+    <div class="dir-e">
+      <div class="header">
+        <div class="inv-title">Deputy Mayor Construction Contracts</div>
+        <div style="margin-left:auto;display:flex;gap:12px">
+          <div style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:50%;background:var(--entity-person)"></div> 23</div>
+          <div style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:50%;background:var(--entity-org)"></div> 14</div>
+          <div style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px"><div style="width:8px;height:8px;border-radius:50%;background:var(--entity-location)"></div> 8</div>
+        </div>
+      </div>
+      <div class="tabs">
+        <div class="tab active">Investigate</div>
+        <div class="tab">Documents (47)</div>
+        <div class="tab">Entities (45)</div>
+        <div class="tab">Full Graph</div>
+      </div>
+      <div class="content">
+        <div class="qa-panel">
+          <div class="qa-content">
+            <div class="answer-block">
+              <div class="answer-question">How is Deputy Mayor Horvat connected to GreenBuild LLC?</div>
+              <div class="answer-text">
+                Deputy Mayor <span class="entity">Horvat</span> is connected to <span class="entity org">GreenBuild LLC</span> through two paths: (1) Horvat signed contract award #2024-089<sup>[1]</sup>, and (2) Horvat's brother-in-law <span class="entity">Marko Petrovic</span> directs <span class="entity org">Cascade Holdings</span>, which owns 60% of GreenBuild<sup>[2]</sup><sup>[3]</sup>.
+              </div>
+              <div class="citation-list">
+                <div class="citation-item"><span class="num">[1]</span> contract-award-089.pdf, p.3</div>
+                <div class="citation-item"><span class="num">[2]</span> company-registration-2021.pdf, p.1</div>
+                <div class="citation-item"><span class="num">[3]</span> ownership-filing.pdf, p.4</div>
+              </div>
+            </div>
+          </div>
+          <div class="qa-input-area">
+            <input class="qa-input" placeholder="Ask about your investigation..." readonly>
+          </div>
+        </div>
+        <div class="graph-panel">
+          <div class="graph-sim">
+            <div class="graph-node person highlighted" style="width:44px;height:44px;left:42%;top:32%"><span class="label">Horvat</span></div>
+            <div class="graph-node org highlighted" style="width:38px;height:38px;left:64%;top:42%"><span class="label">GreenBuild LLC</span></div>
+            <div class="graph-node person highlighted" style="width:34px;height:34px;left:52%;top:58%"><span class="label">M. Petrovic</span></div>
+            <div class="graph-node org highlighted" style="width:36px;height:36px;left:72%;top:60%"><span class="label">Cascade Holdings</span></div>
+            <div class="graph-node person" style="width:26px;height:26px;left:30%;top:24%"><span class="label">I. Novak</span></div>
+            <div class="graph-node org" style="width:28px;height:28px;left:80%;top:28%"><span class="label">City Council</span></div>
+          </div>
+          <div class="graph-filters">
+            <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-person)"></div> People</div>
+            <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-org)"></div> Organizations</div>
+            <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-location)"></div> Locations</div>
+          </div>
+        </div>
+      </div>
+      <div class="statusbar">
+        <span>All services healthy &middot; Last query: 2.3s</span>
+      </div>
+    </div>
+    <div class="mockup-label">
+      <h3>E: Tabbed Workspace</h3>
+      <p>Tab navigation provides clear modes: Investigate (Q&A + graph), Documents, Entities, Full Graph. Split view within the Investigate tab. Clear information hierarchy and discoverability.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Direction F: Narrative Drawer -->
+<div id="dir-f" class="section">
+  <div class="mockup-frame">
+    <div class="dir-f">
+      <div class="header">
+        <div class="inv-title">Deputy Mayor Construction Contracts</div>
+        <div style="margin-left:auto;display:flex;gap:12px">
+          <div style="font-size:12px;color:var(--text-secondary)">23 people &middot; 14 orgs &middot; 8 locations</div>
+        </div>
+      </div>
+      <div class="workspace">
+        <div class="graph-area">
+          <div class="graph-sim">
+            <div class="graph-node person highlighted" style="width:50px;height:50px;left:38%;top:22%"><span class="label" style="font-size:12px">Horvat</span></div>
+            <div class="graph-node org highlighted" style="width:42px;height:42px;left:60%;top:32%"><span class="label" style="font-size:12px">GreenBuild LLC</span></div>
+            <div class="graph-node person highlighted" style="width:38px;height:38px;left:48%;top:48%"><span class="label" style="font-size:12px">M. Petrovic</span></div>
+            <div class="graph-node org highlighted" style="width:40px;height:40px;left:70%;top:50%"><span class="label" style="font-size:12px">Cascade Holdings</span></div>
+            <div class="graph-node person" style="width:30px;height:30px;left:25%;top:15%"><span class="label">I. Novak</span></div>
+            <div class="graph-node org" style="width:32px;height:32px;left:80%;top:20%"><span class="label">City Council</span></div>
+            <div class="graph-node location" style="width:28px;height:28px;left:40%;top:38%"><span class="label">Zagreb</span></div>
+            <div class="graph-node person" style="width:24px;height:24px;left:20%;top:35%"><span class="label">A. Kovac</span></div>
+            <div class="graph-node org" style="width:28px;height:28px;left:55%;top:18%"><span class="label">BuildCo Ltd</span></div>
+            <div class="graph-node person" style="width:22px;height:22px;left:82%;top:62%"><span class="label">S. Babic</span></div>
+          </div>
+          <div class="graph-filters" style="top:16px;bottom:auto;left:50%;transform:translateX(-50%)">
+            <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-person)"></div> People</div>
+            <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-org)"></div> Organizations</div>
+            <div class="filter-chip active"><div class="chip-dot" style="background:var(--entity-location)"></div> Locations</div>
+          </div>
+        </div>
+        <div class="narrative-drawer">
+          <div class="drawer-handle"></div>
+          <div class="answer-block" style="margin-bottom:12px">
+            <div class="answer-question">How is Deputy Mayor Horvat connected to GreenBuild LLC?</div>
+            <div class="answer-text" style="font-size:14px;line-height:1.7">
+              Deputy Mayor <span class="entity">Horvat</span> is connected to <span class="entity org">GreenBuild LLC</span> through two paths: (1) Horvat signed contract award #2024-089<sup>[1]</sup>, and (2) Horvat's brother-in-law <span class="entity">Marko Petrovic</span> directs <span class="entity org">Cascade Holdings</span>, which owns 60% of GreenBuild<sup>[2]</sup><sup>[3]</sup>.
+            </div>
+            <div class="citation-list" style="margin-top:8px;padding-top:8px">
+              <div class="citation-item"><span class="num">[1]</span> contract-award-089.pdf, p.3</div>
+              <div class="citation-item"><span class="num">[2]</span> company-registration-2021.pdf, p.1</div>
+              <div class="citation-item"><span class="num">[3]</span> ownership-filing.pdf, p.4</div>
+            </div>
+          </div>
+          <input class="qa-input" placeholder="Ask a follow-up question..." readonly>
+        </div>
+      </div>
+    </div>
+    <div class="mockup-label">
+      <h3>F: Narrative Drawer</h3>
+      <p>Full-screen graph with bottom pull-up drawer for Q&A. The drawer expands when asking questions and viewing answers, collapses to maximize graph space during exploration. Mobile sheet pattern adapted for desktop.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Processing View -->
+<div id="processing" class="section">
+  <div class="mockup-frame">
+    <div style="display:grid;grid-template-rows:48px 1fr;height:100%">
+      <div style="background:var(--bg-secondary);border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;padding:0 20px;gap:16px">
+        <div style="font-size:14px;font-weight:600">Deputy Mayor Construction Contracts</div>
+        <div style="margin-left:auto;font-size:13px;color:var(--status-info)">Processing documents...</div>
+      </div>
+      <div style="max-width:680px;margin:0 auto;padding:32px 24px;width:100%">
+        <div style="margin-bottom:24px">
+          <div style="font-size:20px;font-weight:600;margin-bottom:4px">Processing 47 documents</div>
+          <div style="font-size:13px;color:var(--text-secondary)">Extracting entities and relationships using local LLM</div>
+          <div class="progress-bar" style="margin-top:12px;height:4px">
+            <div class="progress-fill" style="width:68%"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:var(--text-muted)">
+            <span>32 of 47 complete</span>
+            <span>~4 min remaining</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;margin-bottom:20px">
+          <div style="background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:8px;padding:12px 16px;flex:1;text-align:center">
+            <div style="font-size:20px;font-weight:600;color:var(--entity-person)">18</div>
+            <div style="font-size:11px;color:var(--text-muted)">People</div>
+          </div>
+          <div style="background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:8px;padding:12px 16px;flex:1;text-align:center">
+            <div style="font-size:20px;font-weight:600;color:var(--entity-org)">11</div>
+            <div style="font-size:11px;color:var(--text-muted)">Organizations</div>
+          </div>
+          <div style="background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:8px;padding:12px 16px;flex:1;text-align:center">
+            <div style="font-size:20px;font-weight:600;color:var(--entity-location)">6</div>
+            <div style="font-size:11px;color:var(--text-muted)">Locations</div>
+          </div>
+          <div style="background:var(--bg-elevated);border:1px solid var(--border-subtle);border-radius:8px;padding:12px 16px;flex:1;text-align:center">
+            <div style="font-size:20px;font-weight:600;color:var(--text-primary)">43</div>
+            <div style="font-size:11px;color:var(--text-muted)">Relationships</div>
+          </div>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Documents</div>
+        <div class="processing-card">
+          <div class="pc-status" style="background:var(--status-info)"></div>
+          <div class="pc-name">contract-award-089.pdf</div>
+          <div class="pc-detail">Extracting entities...</div>
+        </div>
+        <div class="processing-card">
+          <div class="pc-status" style="background:var(--status-info)"></div>
+          <div class="pc-name">company-registration-2021.pdf</div>
+          <div class="pc-detail">Embedding chunks...</div>
+        </div>
+        <div class="processing-card">
+          <div class="pc-status" style="background:var(--status-success)"></div>
+          <div class="pc-name">ownership-filing.pdf</div>
+          <div class="pc-detail" style="color:var(--status-success)">Complete — 4 entities, 3 relationships</div>
+        </div>
+        <div class="processing-card">
+          <div class="pc-status" style="background:var(--status-success)"></div>
+          <div class="pc-name">meeting-minutes-2023-04.pdf</div>
+          <div class="pc-detail" style="color:var(--status-success)">Complete — 7 entities, 5 relationships</div>
+        </div>
+        <div class="processing-card">
+          <div class="pc-status" style="background:var(--status-warning)"></div>
+          <div class="pc-name">handwritten-notes-scan.pdf</div>
+          <div class="pc-detail" style="color:var(--status-warning)">Low confidence — poor OCR quality</div>
+        </div>
+        <div class="processing-card">
+          <div class="pc-status" style="background:var(--status-error)"></div>
+          <div class="pc-name">corrupted-bank-statement.pdf</div>
+          <div class="pc-detail" style="color:var(--status-error)">Failed — retry available</div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup-label">
+      <h3>Processing View</h3>
+      <p>Full-width during document ingestion. Per-document status with live entity counts. Progress bar, time estimate, and real-time entity/relationship counters. Transitions to split view when complete.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Comparison -->
+<div id="compare" class="section">
+  <div class="comparison">
+    <h2>Direction Comparison</h2>
+    <table class="comp-table">
+      <thead>
+        <tr>
+          <th>Attribute</th>
+          <th>A: Balanced</th>
+          <th>B: Prose-Forward</th>
+          <th>C: Graph-Dominant</th>
+          <th>D: Focused</th>
+          <th>E: Tabbed</th>
+          <th>F: Drawer</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Q&A : Graph ratio</td>
+          <td class="comp-highlight">35 : 65</td>
+          <td>40 : 60</td>
+          <td>Float : 100</td>
+          <td>35 : 65</td>
+          <td>35 : 65</td>
+          <td>Drawer : 100</td>
+        </tr>
+        <tr>
+          <td>Graph visibility</td>
+          <td class="comp-highlight">Always visible</td>
+          <td class="comp-highlight">Always visible</td>
+          <td class="comp-highlight">Full screen</td>
+          <td class="comp-highlight">Always visible</td>
+          <td>Tab-dependent</td>
+          <td class="comp-highlight">Full screen</td>
+        </tr>
+        <tr>
+          <td>Reading comfort</td>
+          <td>Good</td>
+          <td class="comp-highlight">Excellent</td>
+          <td>Limited</td>
+          <td>Compact</td>
+          <td>Good</td>
+          <td>Good</td>
+        </tr>
+        <tr>
+          <td>Discovery space</td>
+          <td class="comp-highlight">Large</td>
+          <td>Medium</td>
+          <td class="comp-highlight">Maximum</td>
+          <td class="comp-highlight">Large</td>
+          <td class="comp-highlight">Large</td>
+          <td class="comp-highlight">Maximum</td>
+        </tr>
+        <tr>
+          <td>Navigation model</td>
+          <td>Implicit</td>
+          <td>Implicit</td>
+          <td>Floating</td>
+          <td>Icon sidebar</td>
+          <td>Tab bar</td>
+          <td>Drawer gesture</td>
+        </tr>
+        <tr>
+          <td>Complexity</td>
+          <td class="comp-highlight">Low</td>
+          <td class="comp-highlight">Low</td>
+          <td>Medium</td>
+          <td class="comp-highlight">Low</td>
+          <td>Medium</td>
+          <td>Medium</td>
+        </tr>
+        <tr>
+          <td>Answer-graph sync</td>
+          <td class="comp-highlight">Synchronized</td>
+          <td class="comp-highlight">Synchronized</td>
+          <td>Overlay</td>
+          <td class="comp-highlight">Synchronized</td>
+          <td class="comp-highlight">Synchronized</td>
+          <td>Partial</td>
+        </tr>
+        <tr>
+          <td>Build complexity</td>
+          <td class="comp-highlight">Simple</td>
+          <td class="comp-highlight">Simple</td>
+          <td>Complex (z-index)</td>
+          <td>Moderate</td>
+          <td>Moderate</td>
+          <td>Complex (gesture)</td>
+        </tr>
+        <tr>
+          <td>Best for</td>
+          <td>Balanced workflow</td>
+          <td>Heavy reading</td>
+          <td>Visual exploration</td>
+          <td>Power users</td>
+          <td>Multi-mode work</td>
+          <td>Graph-first users</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function showSection(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+
+</body>
+</html>

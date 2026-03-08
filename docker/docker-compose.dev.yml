@@ -1,0 +1,86 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    env_file: ../.env
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-osint}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - osint-network
+
+  neo4j:
+    image: neo4j:5-community
+    environment:
+      - NEO4J_AUTH=${NEO4J_AUTH:-neo4j/osint_dev}
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p osint_dev 'RETURN 1' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - neo4j-data:/data
+    networks:
+      - osint-network
+
+  qdrant:
+    image: qdrant/qdrant:v1.17.0
+    ports:
+      - "6333:6333"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - osint-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis-data:/data
+    networks:
+      - osint-network
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - osint-network
+
+volumes:
+  postgres-data:
+  neo4j-data:
+  qdrant-data:
+  redis-data:
+  ollama-models:
+
+networks:
+  osint-network:
+    driver: bridge

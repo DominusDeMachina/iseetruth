@@ -1,0 +1,1 @@
+// Application-wide TypeScript types

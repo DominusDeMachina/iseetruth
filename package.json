@@ -1,0 +1,14 @@
+{
+  "name": "osint",
+  "private": true,
+  "scripts": {
+    "dev": "bash scripts/dev.sh",
+    "generate-api-types": "bash scripts/generate-api-types.sh"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@swc/core"
+    ]
+  }
+}
