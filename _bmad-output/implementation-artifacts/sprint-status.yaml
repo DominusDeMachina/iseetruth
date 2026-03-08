@@ -43,7 +43,7 @@ development_status:
   # Epic 1: Project Foundation & Infrastructure Setup
   epic-1: in-progress
   1-1-monorepo-scaffolding-docker-compose-infrastructure: done
-  1-2-backend-health-checks-model-readiness: backlog
+  1-2-backend-health-checks-model-readiness: done
   1-3-frontend-shell-with-system-status-page: backlog
   epic-1-retrospective: optional
 
