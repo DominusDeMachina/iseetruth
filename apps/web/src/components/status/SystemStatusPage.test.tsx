@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { screen } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderWithProviders } from "@/test-utils";
 import { SystemStatusPage } from "./SystemStatusPage";
 import type { HealthResponse } from "@/hooks/useHealthStatus";
 
@@ -33,21 +33,6 @@ const mockUseHealthStatus = vi.fn();
 vi.mock("@/hooks/useHealthStatus", () => ({
   useHealthStatus: () => mockUseHealthStatus(),
 }));
-
-function createTestQueryClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: { retry: false, gcTime: 0 },
-    },
-  });
-}
-
-function renderWithProviders(ui: React.ReactElement) {
-  const testClient = createTestQueryClient();
-  return render(
-    <QueryClientProvider client={testClient}>{ui}</QueryClientProvider>,
-  );
-}
 
 describe("SystemStatusPage", () => {
   beforeEach(() => {

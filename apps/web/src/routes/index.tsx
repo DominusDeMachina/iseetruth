@@ -1,18 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { InvestigationList } from "@/components/investigation/InvestigationList";
 
 export const Route = createFileRoute("/")({
   component: Index,
 });
 
 function Index() {
-  return (
-    <div className="flex flex-col items-center justify-center gap-4 pt-24">
-      <h2 className="text-2xl font-semibold text-[var(--text-primary)]">
-        Investigations
-      </h2>
-      <p className="text-sm text-[var(--text-secondary)]">
-        Coming in Epic 2
-      </p>
-    </div>
-  );
+  return <InvestigationList />;
 }

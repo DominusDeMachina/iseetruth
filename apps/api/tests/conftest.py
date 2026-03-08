@@ -1,3 +1,5 @@
+import uuid
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -116,3 +118,61 @@ def client():
     from app.main import app
 
     return TestClient(app)
+
+
+# ---------------------------------------------------------------------------
+# Investigation fixtures
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def sample_investigation_id():
+    return uuid.UUID("11111111-1111-1111-1111-111111111111")
+
+
+@pytest.fixture
+def sample_investigation(sample_investigation_id):
+    """Return a mock Investigation ORM object."""
+    from app.models.investigation import Investigation
+
+    inv = MagicMock(spec=Investigation)
+    inv.id = sample_investigation_id
+    inv.name = "Test Investigation"
+    inv.description = "A test investigation"
+    inv.created_at = datetime(2026, 3, 8, 12, 0, 0, tzinfo=timezone.utc)
+    inv.updated_at = datetime(2026, 3, 8, 12, 0, 0, tzinfo=timezone.utc)
+    return inv
+
+
+@pytest.fixture
+def mock_investigation_service(sample_investigation):
+    """Mock InvestigationService for API endpoint tests."""
+    with patch("app.api.v1.investigations.InvestigationService") as mock_cls:
+        mock_service = AsyncMock()
+        mock_cls.return_value = mock_service
+        mock_service.create_investigation = AsyncMock(return_value=sample_investigation)
+        mock_service.list_investigations = AsyncMock(
+            return_value=([sample_investigation], 1)
+        )
+        mock_service.get_investigation = AsyncMock(return_value=sample_investigation)
+        mock_service.delete_investigation = AsyncMock(return_value=None)
+        yield mock_service
+
+
+@pytest.fixture
+def mock_db_session():
+    """Mock async database session for the get_db dependency."""
+    mock_session = AsyncMock()
+    return mock_session
+
+
+@pytest.fixture
+def investigation_client(mock_db_session):
+    """TestClient with get_db dependency overridden."""
+    from app.db.postgres import get_db
+    from app.main import app
+
+    async def override_get_db():
+        yield mock_db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    yield TestClient(app)
+    app.dependency_overrides.clear()

@@ -41,15 +41,15 @@ story_location: _bmad-output/implementation-artifacts
 
 development_status:
   # Epic 1: Project Foundation & Infrastructure Setup
-  epic-1: in-progress
+  epic-1: done
   1-1-monorepo-scaffolding-docker-compose-infrastructure: done
   1-2-backend-health-checks-model-readiness: done
   1-3-frontend-shell-with-system-status-page: done
   epic-1-retrospective: optional
 
   # Epic 2: Investigation & Document Management
-  epic-2: backlog
-  2-1-investigation-crud-api-list-view: backlog
+  epic-2: in-progress
+  2-1-investigation-crud-api-list-view: done
   2-2-pdf-upload-with-immutable-storage: backlog
   2-3-async-document-processing-pipeline-with-text-extraction: backlog
   2-4-real-time-processing-dashboard-with-sse: backlog
