@@ -41,6 +41,15 @@ class InvalidFileTypeError(DomainError):
         )
 
 
+class DocumentNotReadyError(DomainError):
+    def __init__(self, document_id: str, status: str):
+        super().__init__(
+            detail=f"Document {document_id} is not ready for text retrieval (status: {status})",
+            status_code=409,
+            error_type="document_not_ready",
+        )
+
+
 class DocumentProcessingError(DomainError):
     def __init__(self, document_id: str, detail: str):
         super().__init__(

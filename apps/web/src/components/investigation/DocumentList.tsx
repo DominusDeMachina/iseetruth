@@ -5,6 +5,7 @@ interface DocumentListProps {
   documents: DocumentResponse[];
   isLoading: boolean;
   onDeleteDocument: (id: string) => void;
+  onViewText?: (id: string) => void;
   deletingId?: string | null;
 }
 
@@ -12,6 +13,7 @@ export function DocumentList({
   documents,
   isLoading,
   onDeleteDocument,
+  onViewText,
   deletingId,
 }: DocumentListProps) {
   if (isLoading) {
@@ -38,6 +40,7 @@ export function DocumentList({
           key={doc.id}
           document={doc}
           onDelete={onDeleteDocument}
+          onViewText={onViewText}
           isDeleting={deletingId === doc.id}
         />
       ))}

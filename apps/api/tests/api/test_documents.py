@@ -4,7 +4,7 @@ import io
 import uuid
 from unittest.mock import patch
 
-from app.exceptions import DocumentNotFoundError
+from app.exceptions import DocumentNotFoundError, DocumentNotReadyError
 from app.services.investigation import InvestigationNotFoundError
 
 
@@ -175,3 +175,125 @@ def test_delete_document_not_found_returns_404(
     assert response.status_code == 404
     data = response.json()
     assert data["type"] == "urn:osint:error:document_not_found"
+
+
+# ---------------------------------------------------------------------------
+# GET /documents/{document_id}/text
+# ---------------------------------------------------------------------------
+
+
+def test_get_document_text_returns_200(
+    investigation_client,
+    mock_document_service,
+    sample_investigation_id,
+    sample_document_id,
+    sample_document,
+):
+    """Complete document should return extracted text."""
+    sample_document.status = "complete"
+    sample_document.extracted_text = "--- Page 1 ---\nSome text"
+    sample_document.page_count = 1
+
+    response = investigation_client.get(
+        f"/api/v1/investigations/{sample_investigation_id}/documents/{sample_document_id}/text"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["document_id"] == str(sample_document_id)
+    assert data["filename"] == "test-report.pdf"
+    assert data["page_count"] == 1
+    assert data["extracted_text"] == "--- Page 1 ---\nSome text"
+    assert data["status"] == "complete"
+
+
+def test_get_document_text_null_text_returns_200(
+    investigation_client,
+    mock_document_service,
+    sample_investigation_id,
+    sample_document_id,
+    sample_document,
+):
+    """Complete document with null extracted_text should return 200 with null."""
+    sample_document.status = "complete"
+    sample_document.extracted_text = None
+    sample_document.page_count = 3
+
+    response = investigation_client.get(
+        f"/api/v1/investigations/{sample_investigation_id}/documents/{sample_document_id}/text"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["document_id"] == str(sample_document_id)
+    assert data["extracted_text"] is None
+
+
+def test_get_document_text_not_found_returns_404(
+    investigation_client,
+    mock_document_service,
+    sample_investigation_id,
+):
+    """Missing document should return 404."""
+    not_found_id = uuid.UUID("99999999-9999-9999-9999-999999999999")
+    mock_document_service.get_document.side_effect = DocumentNotFoundError(
+        str(not_found_id)
+    )
+    response = investigation_client.get(
+        f"/api/v1/investigations/{sample_investigation_id}/documents/{not_found_id}/text"
+    )
+    assert response.status_code == 404
+    data = response.json()
+    assert data["type"] == "urn:osint:error:document_not_found"
+
+
+def test_get_document_text_not_complete_returns_409(
+    investigation_client,
+    mock_document_service,
+    sample_investigation_id,
+    sample_document_id,
+    sample_document,
+):
+    """Non-complete document should return 409 Conflict."""
+    sample_document.status = "extracting_text"
+
+    response = investigation_client.get(
+        f"/api/v1/investigations/{sample_investigation_id}/documents/{sample_document_id}/text"
+    )
+    assert response.status_code == 409
+    data = response.json()
+    assert data["type"] == "urn:osint:error:document_not_ready"
+
+
+def test_get_document_text_queued_returns_409(
+    investigation_client,
+    mock_document_service,
+    sample_investigation_id,
+    sample_document_id,
+    sample_document,
+):
+    """Queued document should return 409 Conflict."""
+    sample_document.status = "queued"
+
+    response = investigation_client.get(
+        f"/api/v1/investigations/{sample_investigation_id}/documents/{sample_document_id}/text"
+    )
+    assert response.status_code == 409
+    data = response.json()
+    assert data["type"] == "urn:osint:error:document_not_ready"
+
+
+def test_get_document_text_failed_returns_409(
+    investigation_client,
+    mock_document_service,
+    sample_investigation_id,
+    sample_document_id,
+    sample_document,
+):
+    """Failed document should return 409 Conflict."""
+    sample_document.status = "failed"
+
+    response = investigation_client.get(
+        f"/api/v1/investigations/{sample_investigation_id}/documents/{sample_document_id}/text"
+    )
+    assert response.status_code == 409
+    data = response.json()
+    assert data["type"] == "urn:osint:error:document_not_ready"

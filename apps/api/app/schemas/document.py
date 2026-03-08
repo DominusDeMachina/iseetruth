@@ -20,6 +20,14 @@ class DocumentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DocumentTextResponse(BaseModel):
+    document_id: uuid.UUID
+    filename: str
+    page_count: int | None
+    extracted_text: str | None
+    status: str
+
+
 class DocumentListResponse(BaseModel):
     items: list[DocumentResponse]
     total: int

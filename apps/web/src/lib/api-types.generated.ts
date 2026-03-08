@@ -75,23 +75,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/investigations/{investigation_id}/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Stream Events */
-        get: operations["stream_events_api_v1_investigations__investigation_id__events_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/investigations/{investigation_id}/documents/{document_id}": {
         parameters: {
             query?: never;
@@ -110,29 +93,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/investigations/{investigation_id}/documents/{document_id}/text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Document Text */
+        get: operations["get_document_text_api_v1_investigations__investigation_id__documents__document_id__text_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/investigations/{investigation_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Events
+         * @description Stream SSE events for an investigation's document processing.
+         */
+        get: operations["stream_events_api_v1_investigations__investigation_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
-        };
-        /** HealthResponse */
-        HealthResponse: {
-            status: components["schemas"]["OverallStatusEnum"];
-            /**
-             * Timestamp
-             * Format: date-time
-             */
-            timestamp: string;
-            /** Services */
-            services: {
-                [key: string]: components["schemas"]["ServiceStatus"] | components["schemas"]["OllamaStatus"];
-            };
-            /** Warnings */
-            warnings: string[];
+        /** Body_upload_documents_api_v1_investigations__investigation_id__documents_post */
+        Body_upload_documents_api_v1_investigations__investigation_id__documents_post: {
+            /** Files */
+            files: string[];
         };
         /** DocumentListResponse */
         DocumentListResponse: {
@@ -140,13 +145,6 @@ export interface components {
             items: components["schemas"]["DocumentResponse"][];
             /** Total */
             total: number;
-        };
-        /** UploadDocumentsResponse */
-        UploadDocumentsResponse: {
-            /** Items */
-            items: components["schemas"]["DocumentResponse"][];
-            /** Errors */
-            errors: string[];
         };
         /** DocumentResponse */
         DocumentResponse: {
@@ -171,9 +169,9 @@ export interface components {
             /** Page Count */
             page_count: number | null;
             /** Extracted Text */
-            extracted_text: string | null;
+            extracted_text?: string | null;
             /** Error Message */
-            error_message: string | null;
+            error_message?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -184,6 +182,42 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** DocumentTextResponse */
+        DocumentTextResponse: {
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Filename */
+            filename: string;
+            /** Page Count */
+            page_count: number | null;
+            /** Extracted Text */
+            extracted_text: string | null;
+            /** Status */
+            status: string;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HealthResponse */
+        HealthResponse: {
+            status: components["schemas"]["OverallStatusEnum"];
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            timestamp: string;
+            /** Services */
+            services: {
+                [key: string]: components["schemas"]["ServiceStatus"] | components["schemas"]["OllamaStatus"];
+            };
+            /** Warnings */
+            warnings: string[];
         };
         /** InvestigationCreate */
         InvestigationCreate: {
@@ -272,6 +306,13 @@ export interface components {
          * @enum {string}
          */
         StatusEnum: "healthy" | "unhealthy" | "unavailable";
+        /** UploadDocumentsResponse */
+        UploadDocumentsResponse: {
+            /** Items */
+            items: components["schemas"]["DocumentResponse"][];
+            /** Errors */
+            errors: string[];
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -484,10 +525,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": {
-                    /** Files */
-                    files: Blob[];
-                };
+                "multipart/form-data": components["schemas"]["Body_upload_documents_api_v1_investigations__investigation_id__documents_post"];
             };
         };
         responses: {
@@ -543,37 +581,6 @@ export interface operations {
             };
         };
     };
-    stream_events_api_v1_investigations__investigation_id__events_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                investigation_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/event-stream": string;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     delete_document_api_v1_investigations__investigation_id__documents__document_id__delete: {
         parameters: {
             query?: never;
@@ -592,6 +599,69 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_text_api_v1_investigations__investigation_id__documents__document_id__text_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                investigation_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentTextResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_events_api_v1_investigations__investigation_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                investigation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {

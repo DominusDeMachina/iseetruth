@@ -13,8 +13,8 @@ __pycache__/
 dist/
 
 # Storage (keep directory, ignore contents)
-storage/*
-!storage/.gitkeep
+**/storage/*
+!**/storage/.gitkeep
 
 # IDE
 .idea/

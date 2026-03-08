@@ -10,6 +10,7 @@ import {
 import { useSSE } from "@/hooks/useSSE";
 import { DocumentUploadZone } from "@/components/investigation/DocumentUploadZone";
 import { DocumentList } from "@/components/investigation/DocumentList";
+import { DocumentTextViewer } from "@/components/investigation/DocumentTextViewer";
 import { ProcessingDashboard } from "@/components/investigation/ProcessingDashboard";
 
 export const Route = createFileRoute("/investigations/$id")({
@@ -23,6 +24,7 @@ function InvestigationDetail() {
   const uploadMutation = useUploadDocuments(id);
   const deleteMutation = useDeleteDocument(id);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
 
   const documents = documentsData?.items ?? [];
   const hasProcessing = documents.some(
@@ -102,7 +104,16 @@ function InvestigationDetail() {
             onSettled: () => setDeletingId(null),
           });
         }}
+        onViewText={(docId) => setViewingDocumentId(docId)}
         deletingId={deletingId}
+      />
+
+      <DocumentTextViewer
+        investigationId={id}
+        documentId={viewingDocumentId}
+        onOpenChange={(open) => {
+          if (!open) setViewingDocumentId(null);
+        }}
       />
     </div>
   );

@@ -5,10 +5,11 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.postgres import get_db
-from app.exceptions import InvalidFileTypeError
+from app.exceptions import DocumentNotReadyError, InvalidFileTypeError
 from app.schemas.document import (
     DocumentListResponse,
     DocumentResponse,
+    DocumentTextResponse,
     UploadDocumentsResponse,
 )
 from app.services.document import DocumentService
@@ -113,6 +114,25 @@ async def get_document(
     service = DocumentService(db)
     document = await service.get_document(investigation_id, document_id)
     return _to_response(document, include_text=True)
+
+
+@router.get("/{document_id}/text", response_model=DocumentTextResponse)
+async def get_document_text(
+    investigation_id: uuid.UUID,
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    service = DocumentService(db)
+    document = await service.get_document(investigation_id, document_id)
+    if document.status != "complete":
+        raise DocumentNotReadyError(str(document_id), document.status)
+    return DocumentTextResponse(
+        document_id=document.id,
+        filename=document.filename,
+        page_count=document.page_count,
+        extracted_text=document.extracted_text,
+        status=document.status,
+    )
 
 
 @router.delete("/{document_id}", status_code=204)

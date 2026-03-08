@@ -36,12 +36,14 @@ const statusLabels: Record<string, string> = {
 interface DocumentCardProps {
   document: DocumentResponse;
   onDelete: (id: string) => void;
+  onViewText?: (id: string) => void;
   isDeleting?: boolean;
 }
 
 export function DocumentCard({
   document,
   onDelete,
+  onViewText,
   isDeleting = false,
 }: DocumentCardProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -81,9 +83,8 @@ export function DocumentCard({
           <Button
             variant="ghost"
             size="sm"
-            disabled
             className="shrink-0 gap-1 text-xs text-[var(--text-muted)]"
-            title="View Text — coming soon"
+            onClick={() => onViewText?.(document.id)}
           >
             <Eye className="size-3" />
             View Text

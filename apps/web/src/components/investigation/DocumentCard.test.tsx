@@ -69,12 +69,23 @@ describe("DocumentCard", () => {
     expect(screen.getByText("Extracting Text")).toBeInTheDocument();
   });
 
-  it("shows disabled 'View Text' button for completed documents", () => {
+  it("shows enabled 'View Text' button for completed documents", () => {
     const completeDoc = { ...mockDocument, status: "complete" };
     render(<DocumentCard document={completeDoc} onDelete={vi.fn()} />);
     const viewTextBtn = screen.getByRole("button", { name: /view text/i });
     expect(viewTextBtn).toBeInTheDocument();
-    expect(viewTextBtn).toBeDisabled();
+    expect(viewTextBtn).not.toBeDisabled();
+  });
+
+  it("fires onViewText when 'View Text' button is clicked", () => {
+    const completeDoc = { ...mockDocument, status: "complete" };
+    const onViewText = vi.fn();
+    render(
+      <DocumentCard document={completeDoc} onDelete={vi.fn()} onViewText={onViewText} />,
+    );
+    const viewTextBtn = screen.getByRole("button", { name: /view text/i });
+    fireEvent.click(viewTextBtn);
+    expect(onViewText).toHaveBeenCalledWith(completeDoc.id);
   });
 
   it("does not show 'View Text' button for non-complete documents", () => {

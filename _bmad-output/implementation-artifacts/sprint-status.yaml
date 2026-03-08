@@ -53,7 +53,7 @@ development_status:
   2-2-pdf-upload-with-immutable-storage: done
   2-3-async-document-processing-pipeline-with-text-extraction: done
   2-4-real-time-processing-dashboard-with-sse: done
-  2-5-extracted-text-viewer: backlog
+  2-5-extracted-text-viewer: done
   epic-2-retrospective: optional
 
   # Epic 3: Entity Extraction & Knowledge Graph Construction

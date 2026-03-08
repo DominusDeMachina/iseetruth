@@ -4,6 +4,7 @@ import type { components } from "@/lib/api-types.generated";
 
 export type DocumentResponse = components["schemas"]["DocumentResponse"];
 export type DocumentListResponse = components["schemas"]["DocumentListResponse"];
+export type DocumentTextResponse = components["schemas"]["DocumentTextResponse"];
 export type UploadDocumentsResponse =
   components["schemas"]["UploadDocumentsResponse"];
 
@@ -19,6 +20,31 @@ export function useDocuments(investigationId: string) {
       return data;
     },
     enabled: !!investigationId,
+  });
+}
+
+export function useDocumentText(
+  investigationId: string,
+  documentId: string | null,
+) {
+  return useQuery<DocumentTextResponse>({
+    queryKey: ["document-text", investigationId, documentId],
+    queryFn: async () => {
+      const { data, error } = await api.GET(
+        "/api/v1/investigations/{investigation_id}/documents/{document_id}/text",
+        {
+          params: {
+            path: {
+              investigation_id: investigationId,
+              document_id: documentId!,
+            },
+          },
+        },
+      );
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!documentId,
   });
 }
 
