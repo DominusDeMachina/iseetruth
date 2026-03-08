@@ -7,10 +7,12 @@ export const Route = createFileRoute("/investigations/$id")({
 function InvestigationDetail() {
   const { id } = Route.useParams();
   return (
-    <div>
-      <h2 className="text-2xl font-semibold">Investigation {id}</h2>
-      <p className="mt-2 text-muted-foreground">
-        Investigation detail view placeholder.
+    <div className="flex flex-col items-center justify-center gap-4 pt-24">
+      <h2 className="text-2xl font-semibold text-[var(--text-primary)]">
+        Investigation {id}
+      </h2>
+      <p className="text-sm text-[var(--text-secondary)]">
+        Investigation detail view — Coming in Epic 2
       </p>
     </div>
   );

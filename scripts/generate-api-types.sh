@@ -1,10 +1,11 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+# Requires: backend running at localhost:8000
+set -euo pipefail
 
 API_URL="${API_URL:-http://localhost:8000}"
-OUTPUT_FILE="apps/web/src/lib/api-types.generated.ts"
 
-echo "Fetching OpenAPI spec from ${API_URL}/openapi.json..."
-curl -s "${API_URL}/openapi.json" | npx openapi-typescript /dev/stdin -o "${OUTPUT_FILE}"
+echo "Generating TypeScript types from FastAPI OpenAPI spec..."
+pnpm -C apps/web exec openapi-typescript "${API_URL}/openapi.json" \
+  -o src/lib/api-types.generated.ts
 
-echo "Types generated at ${OUTPUT_FILE}"
+echo "Types generated at apps/web/src/lib/api-types.generated.ts"

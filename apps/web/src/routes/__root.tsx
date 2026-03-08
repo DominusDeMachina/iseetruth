@@ -1,5 +1,7 @@
-import { createRootRoute, Outlet } from "@tanstack/react-router";
+import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
 import { lazy } from "react";
+import { StatusBar } from "@/components/layout/StatusBar";
+import { ViewportWarning } from "@/components/layout/ViewportWarning";
 
 const TanStackRouterDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -11,13 +13,17 @@ const TanStackRouterDevtools = import.meta.env.DEV
 
 export const Route = createRootRoute({
   component: () => (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-border px-6 py-4">
-        <h1 className="text-xl font-bold">OSINT Document Analyzer</h1>
+    <div className="grid min-h-[100dvh] grid-rows-[auto_1fr_auto_auto] bg-[var(--bg-primary)]">
+      <header className="flex items-center border-b border-[var(--border-subtle)] px-6 py-4">
+        <Link to="/" className="text-xl font-bold text-[var(--text-primary)] hover:text-[var(--text-secondary)] transition-colors">
+          OSINT
+        </Link>
       </header>
       <main className="p-6">
         <Outlet />
       </main>
+      <ViewportWarning />
+      <StatusBar />
       <TanStackRouterDevtools />
     </div>
   ),

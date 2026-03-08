@@ -1,16 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { SystemStatusPage } from "@/components/status/SystemStatusPage";
 
 export const Route = createFileRoute("/status")({
-  component: Status,
+  component: SystemStatusPage,
 });
-
-function Status() {
-  return (
-    <div>
-      <h2 className="text-2xl font-semibold">System Status</h2>
-      <p className="mt-2 text-muted-foreground">
-        System status page placeholder.
-      </p>
-    </div>
-  );
-}

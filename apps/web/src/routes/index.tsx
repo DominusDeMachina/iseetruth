@@ -6,11 +6,12 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   return (
-    <div>
-      <h2 className="text-2xl font-semibold">Investigations</h2>
-      <p className="mt-2 text-muted-foreground">
-        Welcome to the OSINT Document Analyzer. Select or create an
-        investigation to get started.
+    <div className="flex flex-col items-center justify-center gap-4 pt-24">
+      <h2 className="text-2xl font-semibold text-[var(--text-primary)]">
+        Investigations
+      </h2>
+      <p className="text-sm text-[var(--text-secondary)]">
+        Coming in Epic 2
       </p>
     </div>
   );

@@ -4,6 +4,32 @@
 
 :root {
   color-scheme: dark;
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Source Serif 4 Variable", ui-serif, Georgia, serif;
+
+  /* OSINT Design Tokens — Warm Dark Theme "Investigator's Desk" */
+  --bg-primary: #1a1816;
+  --bg-secondary: #232019;
+  --bg-elevated: #2d2a23;
+  --bg-hover: #38342b;
+  --border-subtle: #3d3830;
+  --border-strong: #5c5548;
+  --text-primary: #e8e0d4;
+  --text-secondary: #a89f90;
+  --text-muted: #7a7168;
+
+  /* Status Colors */
+  --status-success: #7dab8f;
+  --status-warning: #c4a265;
+  --status-error: #c47070;
+  --status-info: #6b9bd2;
+
+  /* Entity Colors */
+  --entity-person: #6b9bd2;
+  --entity-org: #c4a265;
+  --entity-location: #7dab8f;
+  --entity-event: #b07dc4;
+  --entity-document: #a89f90;
 }
 
 @theme inline {
@@ -87,5 +113,6 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
   }
 }
