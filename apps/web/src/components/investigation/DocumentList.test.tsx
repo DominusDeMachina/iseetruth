@@ -11,6 +11,8 @@ const mockDocument: DocumentResponse = {
   sha256_checksum: "a".repeat(64),
   status: "queued",
   page_count: 5,
+  extracted_text: null,
+  error_message: null,
   created_at: "2026-03-08T12:00:00Z",
   updated_at: "2026-03-08T12:00:00Z",
 };

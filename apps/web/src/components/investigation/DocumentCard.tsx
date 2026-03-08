@@ -21,8 +21,16 @@ function formatDate(dateString: string): string {
 
 const statusStyles: Record<string, string> = {
   queued: "bg-[var(--status-info)]/15 text-[var(--status-info)] border-[var(--status-info)]/30",
+  extracting_text: "bg-[var(--status-info)]/15 text-[var(--status-info)] border-[var(--status-info)]/30",
   complete: "bg-[var(--status-success)]/15 text-[var(--status-success)] border-[var(--status-success)]/30",
   failed: "bg-[var(--status-error)]/15 text-[var(--status-error)] border-[var(--status-error)]/30",
+};
+
+const statusLabels: Record<string, string> = {
+  queued: "Queued",
+  extracting_text: "Extracting Text",
+  complete: "Complete",
+  failed: "Failed",
 };
 
 interface DocumentCardProps {
@@ -66,7 +74,7 @@ export function DocumentCard({
           variant="outline"
           className={statusStyles[document.status] ?? ""}
         >
-          {document.status.charAt(0).toUpperCase() + document.status.slice(1)}
+          {statusLabels[document.status] ?? document.status.charAt(0).toUpperCase() + document.status.slice(1)}
         </Badge>
 
         <Button

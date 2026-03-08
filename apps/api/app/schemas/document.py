@@ -12,6 +12,8 @@ class DocumentResponse(BaseModel):
     sha256_checksum: str
     status: str
     page_count: int | None
+    extracted_text: str | None = None
+    error_message: str | None = None
     created_at: datetime
     updated_at: datetime
 

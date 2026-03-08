@@ -19,6 +19,7 @@ dependencies = [
     "pymupdf>=1.27.1",
     "qdrant-client>=1.17.0",
     "redis>=6.4.0",
+    "sse-starlette>=2.3.3",
     "sqlalchemy[asyncio]>=2.0.48",
 ]
 

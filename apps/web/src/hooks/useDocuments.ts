@@ -19,6 +19,13 @@ export function useDocuments(investigationId: string) {
       return data;
     },
     enabled: !!investigationId,
+    refetchInterval: (query) => {
+      const docs = query.state.data?.items;
+      const hasProcessing = docs?.some(
+        (d) => d.status === "queued" || d.status === "extracting_text",
+      );
+      return hasProcessing ? 5000 : false;
+    },
   });
 }
 

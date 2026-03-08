@@ -51,7 +51,7 @@ development_status:
   epic-2: in-progress
   2-1-investigation-crud-api-list-view: done
   2-2-pdf-upload-with-immutable-storage: done
-  2-3-async-document-processing-pipeline-with-text-extraction: backlog
+  2-3-async-document-processing-pipeline-with-text-extraction: done
   2-4-real-time-processing-dashboard-with-sse: backlog
   2-5-extracted-text-viewer: backlog
   epic-2-retrospective: optional

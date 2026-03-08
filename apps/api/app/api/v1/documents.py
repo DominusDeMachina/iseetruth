@@ -21,7 +21,7 @@ router = APIRouter(
 MAX_FILE_SIZE = 200 * 1024 * 1024  # 200 MB
 
 
-def _to_response(document) -> DocumentResponse:
+def _to_response(document, include_text: bool = False) -> DocumentResponse:
     return DocumentResponse(
         id=document.id,
         investigation_id=document.investigation_id,
@@ -30,6 +30,8 @@ def _to_response(document) -> DocumentResponse:
         sha256_checksum=document.sha256_checksum,
         status=document.status,
         page_count=document.page_count,
+        extracted_text=document.extracted_text if include_text else None,
+        error_message=document.error_message,
         created_at=document.created_at,
         updated_at=document.updated_at,
     )
@@ -110,7 +112,7 @@ async def get_document(
 ):
     service = DocumentService(db)
     document = await service.get_document(investigation_id, document_id)
-    return _to_response(document)
+    return _to_response(document, include_text=True)
 
 
 @router.delete("/{document_id}", status_code=204)

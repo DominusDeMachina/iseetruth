@@ -41,6 +41,15 @@ class InvalidFileTypeError(DomainError):
         )
 
 
+class DocumentProcessingError(DomainError):
+    def __init__(self, document_id: str, detail: str):
+        super().__init__(
+            detail=f"Document processing failed for {document_id}: {detail}",
+            status_code=422,
+            error_type="document_processing_failed",
+        )
+
+
 async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,

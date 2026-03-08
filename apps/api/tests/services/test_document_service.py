@@ -83,9 +83,18 @@ async def test_upload_document_stores_file_and_creates_record(
 
     mock_db.refresh = AsyncMock(side_effect=fake_refresh)
 
+    mock_task = MagicMock()
     with (
         patch("app.services.document.STORAGE_ROOT", tmp_path),
         patch("app.services.document._get_page_count", return_value=5),
+        patch.dict(
+            "sys.modules",
+            {
+                "app.worker.tasks.process_document": MagicMock(
+                    process_document_task=mock_task
+                )
+            },
+        ),
     ):
         result = await service.upload_document(sample_inv_id, mock_upload_file)
 

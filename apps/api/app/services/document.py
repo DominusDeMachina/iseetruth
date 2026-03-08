@@ -79,6 +79,20 @@ class DocumentService:
             size_bytes=size_bytes,
             investigation_id=str(investigation_id),
         )
+
+        # Enqueue Celery task for async text extraction
+        try:
+            from app.worker.tasks.process_document import process_document_task
+
+            process_document_task.delay(str(document_id), str(investigation_id))
+        except Exception as exc:
+            logger.warning(
+                "Failed to enqueue processing task",
+                document_id=str(document_id),
+                investigation_id=str(investigation_id),
+                error=str(exc),
+            )
+
         return document
 
     async def list_documents(
