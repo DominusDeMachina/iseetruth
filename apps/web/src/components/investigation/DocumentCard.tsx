@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, Trash2 } from "lucide-react";
+import { Eye, FileText, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteDocumentDialog } from "./DeleteDocumentDialog";
@@ -76,6 +76,19 @@ export function DocumentCard({
         >
           {statusLabels[document.status] ?? document.status.charAt(0).toUpperCase() + document.status.slice(1)}
         </Badge>
+
+        {document.status === "complete" && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled
+            className="shrink-0 gap-1 text-xs text-[var(--text-muted)]"
+            title="View Text — coming soon"
+          >
+            <Eye className="size-3" />
+            View Text
+          </Button>
+        )}
 
         <Button
           variant="ghost"

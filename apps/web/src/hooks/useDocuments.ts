@@ -19,13 +19,6 @@ export function useDocuments(investigationId: string) {
       return data;
     },
     enabled: !!investigationId,
-    refetchInterval: (query) => {
-      const docs = query.state.data?.items;
-      const hasProcessing = docs?.some(
-        (d) => d.status === "queued" || d.status === "extracting_text",
-      );
-      return hasProcessing ? 5000 : false;
-    },
   });
 }
 
@@ -47,7 +40,23 @@ export function useUploadDocuments(investigationId: string) {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (response) => {
+      // Immediately merge uploaded documents (status: "queued") into cache
+      // so hasProcessing becomes true and SSE connects before Celery publishes events
+      queryClient.setQueryData<DocumentListResponse>(
+        ["documents", investigationId],
+        (old) => {
+          if (!old) return { items: response.items, total: response.items.length };
+          const existingIds = new Set(old.items.map((d) => d.id));
+          const newItems = response.items.filter((d) => !existingIds.has(d.id));
+          return {
+            ...old,
+            items: [...old.items, ...newItems],
+            total: old.total + newItems.length,
+          };
+        },
+      );
+      // Also refetch in background to reconcile with server state
       queryClient.invalidateQueries({
         queryKey: ["documents", investigationId],
       });

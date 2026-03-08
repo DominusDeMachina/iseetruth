@@ -7,8 +7,10 @@ import {
   useUploadDocuments,
   useDeleteDocument,
 } from "@/hooks/useDocuments";
+import { useSSE } from "@/hooks/useSSE";
 import { DocumentUploadZone } from "@/components/investigation/DocumentUploadZone";
 import { DocumentList } from "@/components/investigation/DocumentList";
+import { ProcessingDashboard } from "@/components/investigation/ProcessingDashboard";
 
 export const Route = createFileRoute("/investigations/$id")({
   component: InvestigationDetail,
@@ -21,6 +23,15 @@ function InvestigationDetail() {
   const uploadMutation = useUploadDocuments(id);
   const deleteMutation = useDeleteDocument(id);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const documents = documentsData?.items ?? [];
+  const hasProcessing = documents.some(
+    (d) => d.status === "queued" || d.status === "extracting_text",
+  );
+  // Connect SSE when upload starts (not after it completes) so the connection
+  // is established before Celery workers publish processing events
+  const sseEnabled = hasProcessing || uploadMutation.isPending;
+  const { isConnected, connectionError } = useSSE(id, sseEnabled);
 
   if (isLoading) {
     return (
@@ -47,8 +58,6 @@ function InvestigationDetail() {
     );
   }
 
-  const documents = documentsData?.items ?? [];
-
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -74,6 +83,15 @@ function InvestigationDetail() {
         isUploading={uploadMutation.isPending}
         hasDocuments={documents.length > 0}
       />
+
+      {documents.length > 0 && (
+        <ProcessingDashboard
+          documents={documents}
+          investigationName={investigation.name}
+          isConnected={isConnected}
+          connectionError={connectionError}
+        />
+      )}
 
       <DocumentList
         documents={documents}
