@@ -23,6 +23,24 @@ class HealthCheckError(DomainError):
         super().__init__(detail, status_code=503, error_type="health_check_error")
 
 
+class DocumentNotFoundError(DomainError):
+    def __init__(self, document_id: str):
+        super().__init__(
+            detail=f"No document found with id: {document_id}",
+            status_code=404,
+            error_type="document_not_found",
+        )
+
+
+class InvalidFileTypeError(DomainError):
+    def __init__(self, detail: str):
+        super().__init__(
+            detail=detail,
+            status_code=422,
+            error_type="invalid_file_type",
+        )
+
+
 async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,

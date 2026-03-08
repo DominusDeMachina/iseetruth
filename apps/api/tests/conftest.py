@@ -143,8 +143,14 @@ def sample_investigation(sample_investigation_id):
 
 
 @pytest.fixture
-def mock_investigation_service(sample_investigation):
+def mock_investigation_service(sample_investigation, mock_db_session):
     """Mock InvestigationService for API endpoint tests."""
+    # Mock the DB execute for document count query in _get_document_count / _get_document_counts_batch
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 0
+    count_result.all.return_value = []
+    mock_db_session.execute = AsyncMock(return_value=count_result)
+
     with patch("app.api.v1.investigations.InvestigationService") as mock_cls:
         mock_service = AsyncMock()
         mock_cls.return_value = mock_service
@@ -176,3 +182,58 @@ def investigation_client(mock_db_session):
     app.dependency_overrides[get_db] = override_get_db
     yield TestClient(app)
     app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Document fixtures
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def sample_document_id():
+    return uuid.UUID("22222222-2222-2222-2222-222222222222")
+
+
+@pytest.fixture
+def sample_document(sample_document_id, sample_investigation_id):
+    """Return a mock Document ORM object."""
+    from app.models.document import Document
+
+    doc = MagicMock(spec=Document)
+    doc.id = sample_document_id
+    doc.investigation_id = sample_investigation_id
+    doc.filename = "test-report.pdf"
+    doc.size_bytes = 102400
+    doc.sha256_checksum = "a" * 64
+    doc.status = "queued"
+    doc.page_count = 5
+    doc.created_at = datetime(2026, 3, 8, 12, 0, 0, tzinfo=timezone.utc)
+    doc.updated_at = datetime(2026, 3, 8, 12, 0, 0, tzinfo=timezone.utc)
+    return doc
+
+
+@pytest.fixture
+def mock_document_service(sample_document):
+    """Mock DocumentService for API endpoint tests."""
+    with patch("app.api.v1.documents.DocumentService") as mock_cls:
+        mock_service = AsyncMock()
+        mock_cls.return_value = mock_service
+        mock_service.upload_document = AsyncMock(return_value=sample_document)
+        mock_service.list_documents = AsyncMock(return_value=([sample_document], 1))
+        mock_service.get_document = AsyncMock(return_value=sample_document)
+        mock_service.delete_document = AsyncMock(return_value=None)
+        yield mock_service
+
+
+@pytest.fixture
+def mock_pdf_file():
+    """Create a mock UploadFile that looks like a PDF (supports chunked reads)."""
+    import io
+
+    content = b"%PDF-1.4 fake pdf content for testing"
+    file = io.BytesIO(content)
+    upload = MagicMock()
+    upload.filename = "test-report.pdf"
+    upload.content_type = "application/pdf"
+    upload.read = AsyncMock(side_effect=[content, b""])
+    upload.seek = AsyncMock()
+    upload.file = file
+    return upload
