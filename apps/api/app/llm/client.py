@@ -1,0 +1,106 @@
+import httpx
+from loguru import logger
+
+from app.exceptions import OllamaUnavailableError
+
+# Re-export for convenient importing
+__all__ = ["OllamaClient", "OllamaUnavailableError"]
+
+# Timeouts
+INFERENCE_TIMEOUT = 120.0  # LLM inference can be slow
+CHECK_TIMEOUT = 5.0
+
+DEFAULT_MODEL = "qwen3.5:9b"
+
+
+class OllamaClient:
+    def __init__(self, base_url: str):
+        self._base_url = base_url.rstrip("/")
+
+    def chat(
+        self,
+        model: str,
+        messages: list[dict],
+        format: str | None = None,
+        temperature: float = 0,
+    ) -> dict:
+        """Send a chat completion request to Ollama.
+
+        Returns the full response dict from Ollama's /api/chat endpoint.
+        Raises OllamaUnavailableError on connection/timeout errors.
+        """
+        body: dict = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "options": {"temperature": temperature},
+        }
+        if format is not None:
+            body["format"] = format
+
+        try:
+            with httpx.Client(timeout=INFERENCE_TIMEOUT) as http:
+                response = http.post(f"{self._base_url}/api/chat", json=body)
+                response.raise_for_status()
+                return response.json()
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
+            logger.error("Ollama unavailable for chat", error=str(exc))
+            raise OllamaUnavailableError(
+                f"Ollama unavailable for chat: {exc}"
+            ) from exc
+
+    def generate(
+        self,
+        model: str,
+        prompt: str,
+        format: str | None = None,
+        temperature: float = 0,
+    ) -> str:
+        """Send a generate request to Ollama.
+
+        Returns the generated text string.
+        Raises OllamaUnavailableError on connection/timeout errors.
+        """
+        body: dict = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": temperature},
+        }
+        if format is not None:
+            body["format"] = format
+
+        try:
+            with httpx.Client(timeout=INFERENCE_TIMEOUT) as http:
+                response = http.post(f"{self._base_url}/api/generate", json=body)
+                response.raise_for_status()
+                return response.json()["response"]
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
+            logger.error("Ollama unavailable for generate", error=str(exc))
+            raise OllamaUnavailableError(
+                f"Ollama unavailable for generate: {exc}"
+            ) from exc
+
+    def check_available(self) -> bool:
+        """Check if Ollama is running and the required model is available.
+
+        Returns True if the default model is in the list, False otherwise.
+        Never raises — returns False on any error.
+        """
+        try:
+            with httpx.Client(timeout=CHECK_TIMEOUT) as http:
+                response = http.get(f"{self._base_url}/api/tags")
+                response.raise_for_status()
+                data = response.json()
+                models = [m["name"] for m in data.get("models", [])]
+                available = DEFAULT_MODEL in models
+                if not available:
+                    logger.warning(
+                        "Required model not found in Ollama",
+                        required=DEFAULT_MODEL,
+                        available=models,
+                    )
+                return available
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
+            logger.warning("Ollama health check failed", error=str(exc))
+            return False

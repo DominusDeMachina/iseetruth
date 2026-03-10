@@ -59,6 +59,16 @@ class DocumentProcessingError(DomainError):
         )
 
 
+class OllamaUnavailableError(DomainError):
+    def __init__(self, detail: str = "Ollama LLM service is unavailable"):
+        super().__init__(detail, status_code=503, error_type="ollama_unavailable")
+
+
+class ChunkingError(DomainError):
+    def __init__(self, detail: str = "Document chunking failed"):
+        super().__init__(detail, status_code=422, error_type="chunking_failed")
+
+
 async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
