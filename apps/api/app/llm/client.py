@@ -7,7 +7,7 @@ from app.exceptions import OllamaUnavailableError
 __all__ = ["OllamaClient", "OllamaUnavailableError"]
 
 # Timeouts
-INFERENCE_TIMEOUT = 120.0  # LLM inference can be slow
+INFERENCE_TIMEOUT = 300.0  # LLM inference can be slow; allows for cold start + 9B model
 CHECK_TIMEOUT = 5.0
 
 DEFAULT_MODEL = "qwen3.5:9b"
