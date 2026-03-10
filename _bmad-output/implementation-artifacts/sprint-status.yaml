@@ -59,7 +59,7 @@ development_status:
   # Epic 3: Entity Extraction & Knowledge Graph Construction
   epic-3: in-progress
   3-1-document-chunking-llm-integration-layer: done
-  3-2-entity-relationship-extraction-via-local-llm: backlog
+  3-2-entity-relationship-extraction-via-local-llm: done
   3-3-provenance-chain-evidence-storage: backlog
   3-4-vector-embedding-generation-storage: backlog
   3-5-document-level-entity-level-confidence-display: backlog

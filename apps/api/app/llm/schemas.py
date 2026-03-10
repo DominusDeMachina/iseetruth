@@ -17,3 +17,20 @@ class ExtractedEntity(BaseModel):
 
 class EntityExtractionResponse(BaseModel):
     entities: list[ExtractedEntity]
+
+
+class RelationType(str, Enum):
+    WORKS_FOR = "WORKS_FOR"
+    KNOWS = "KNOWS"
+    LOCATED_AT = "LOCATED_AT"
+
+
+class ExtractedRelationship(BaseModel):
+    source_entity_name: str
+    target_entity_name: str
+    relation_type: RelationType
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class RelationshipExtractionResponse(BaseModel):
+    relationships: list[ExtractedRelationship]

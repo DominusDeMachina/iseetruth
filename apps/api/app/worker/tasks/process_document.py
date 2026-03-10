@@ -4,11 +4,13 @@ from pathlib import Path
 from loguru import logger
 
 from app.config import get_settings
+from app.db.sync_neo4j import sync_neo4j_driver
 from app.db.sync_postgres import SyncSessionLocal
 from app.llm.client import OllamaClient
 from app.models.document import Document
 from app.services.chunking import ChunkingService
 from app.services.events import EventPublisher
+from app.services.extraction import EntityExtractionService
 from app.services.text_extraction import TextExtractionService
 from app.worker.celery_app import celery_app
 
@@ -162,6 +164,64 @@ def process_document_task(document_id: str, investigation_id: str) -> None:
                 )
                 return
 
+            # Stage 3: Entity extraction
+            document.status = "extracting_entities"
+            session.commit()
+
+            _publish_safe(
+                "document.processing",
+                {
+                    "document_id": document_id,
+                    "stage": "extracting_entities",
+                    "chunk_count": len(chunks),
+                    "progress": 0.0,
+                },
+            )
+
+            try:
+                extraction_service = EntityExtractionService(ollama_client, sync_neo4j_driver)
+
+                def on_entity_discovered(entity) -> None:
+                    _publish_safe(
+                        "entity.discovered",
+                        {
+                            "document_id": document_id,
+                            "entity_type": entity.type.value,
+                            "entity_name": entity.name,
+                        },
+                    )
+
+                summary = extraction_service.extract_from_chunks(
+                    chunks,
+                    investigation_id=document.investigation_id,
+                    on_entity_discovered=on_entity_discovered,
+                )
+
+                logger.info(
+                    "Entity extraction complete",
+                    document_id=document_id,
+                    entity_count=summary.entity_count,
+                    relationship_count=summary.relationship_count,
+                )
+
+            except Exception as exc:
+                session.rollback()
+                document.status = "failed"
+                document.error_message = f"Entity extraction failed: {exc}"
+                session.commit()
+
+                logger.error(
+                    "Entity extraction failed",
+                    document_id=document_id,
+                    error=str(exc),
+                )
+
+                _publish_safe(
+                    "document.failed",
+                    {"document_id": document_id, "error": f"Entity extraction failed: {exc}"},
+                )
+                return
+
             # All stages complete
             document.status = "complete"
             session.commit()
@@ -170,8 +230,17 @@ def process_document_task(document_id: str, investigation_id: str) -> None:
                 "Document processing complete",
                 document_id=document_id,
                 investigation_id=investigation_id,
+                entity_count=summary.entity_count,
+                relationship_count=summary.relationship_count,
             )
 
-            _publish_safe("document.complete", {"document_id": document_id})
+            _publish_safe(
+                "document.complete",
+                {
+                    "document_id": document_id,
+                    "entity_count": summary.entity_count,
+                    "relationship_count": summary.relationship_count,
+                },
+            )
     finally:
         publisher.close()

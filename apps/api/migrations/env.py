@@ -1,10 +1,10 @@
-import os
 from logging.config import fileConfig
 
 from sqlalchemy import create_engine, pool
 
 from alembic import context
 
+from app.config import get_settings
 from app.models import Base  # noqa: E402 — import all models so metadata is populated
 
 config = context.config
@@ -17,9 +17,7 @@ target_metadata = Base.metadata
 
 def get_url():
     """Return the database URL for migrations (sync psycopg2 driver)."""
-    url = os.environ.get("DATABASE_URL", "")
-    if not url:
-        raise RuntimeError("DATABASE_URL environment variable is required for migrations")
+    url = get_settings().database_url
     # Ensure we use the sync psycopg2 driver — strip any async driver prefix
     for prefix in ("postgresql+asyncpg://", "postgresql+psycopg://"):
         if url.startswith(prefix):

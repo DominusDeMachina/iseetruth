@@ -11,7 +11,9 @@ from app.api.v1.router import v1_router
 from app.config import get_settings
 from app.db.neo4j import driver as neo4j_driver
 from app.db.redis import client as redis_client
+from app.db.sync_neo4j import sync_neo4j_driver
 from app.exceptions import DomainError, domain_error_handler, generic_error_handler
+from app.services.extraction import ensure_neo4j_constraints
 
 # ---------------------------------------------------------------------------
 # Loguru configuration (Task 2)
@@ -47,11 +49,17 @@ async def lifespan(app: FastAPI):
     logger.info("Running Alembic migrations")
     await asyncio.to_thread(_run_alembic_upgrade)
 
+    logger.info("Setting up Neo4j constraints and indexes")
+    await asyncio.to_thread(ensure_neo4j_constraints, sync_neo4j_driver)
+    logger.info("Neo4j constraints setup complete")
+
     logger.info("Application startup complete")
     yield
     # --- Shutdown ---
     logger.info("Closing Neo4j driver")
     await neo4j_driver.close()
+    logger.info("Closing sync Neo4j driver")
+    sync_neo4j_driver.close()
     logger.info("Closing Redis connection")
     await redis_client.aclose()
     logger.info("Application shutdown complete")

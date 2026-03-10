@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.services.extraction import ExtractionSummary
+
 
 @pytest.fixture
 def sample_doc_record():
@@ -38,6 +40,7 @@ def _setup_mocks(mock_session_cls, mock_extraction_cls, mock_publisher_cls, doc_
 
 class TestProcessDocumentTask:
     @patch("app.worker.tasks.process_document.STORAGE_ROOT", Path("/tmp/storage"))
+    @patch("app.worker.tasks.process_document.EntityExtractionService")
     @patch("app.worker.tasks.process_document.ChunkingService")
     @patch("app.worker.tasks.process_document.OllamaClient")
     @patch("app.worker.tasks.process_document.EventPublisher")
@@ -50,9 +53,10 @@ class TestProcessDocumentTask:
         mock_publisher_cls,
         mock_ollama_cls,
         mock_chunking_cls,
+        mock_entity_svc_cls,
         sample_doc_record,
     ):
-        """Full pipeline: Ollama check → extract → chunk → complete."""
+        """Full pipeline: Ollama check → extract text → chunk → extract entities → complete."""
         from app.worker.tasks.process_document import process_document_task
 
         mock_session, mock_extractor, mock_publisher = _setup_mocks(
@@ -68,6 +72,10 @@ class TestProcessDocumentTask:
         mock_chunking.chunk_document.return_value = [MagicMock(), MagicMock()]
         mock_chunking_cls.return_value = mock_chunking
 
+        mock_entity_svc = MagicMock()
+        mock_entity_svc.extract_from_chunks.return_value = ExtractionSummary(3, 1, 2)
+        mock_entity_svc_cls.return_value = mock_entity_svc
+
         process_document_task(
             str(sample_doc_record.id),
             str(sample_doc_record.investigation_id),
@@ -78,39 +86,51 @@ class TestProcessDocumentTask:
         assert sample_doc_record.extracted_text == "--- Page 1 ---\nHello world"
         mock_session.commit.assert_called()
 
-        # Verify chunking was called
+        # Verify chunking and extraction were called
         mock_chunking.chunk_document.assert_called_once()
+        mock_entity_svc.extract_from_chunks.assert_called_once()
 
-        # Verify events: extracting_text, chunking, chunking_complete, complete
-        assert mock_publisher.publish.call_count == 4
+        # Verify events: extracting_text, chunking, chunking_complete,
+        #                extracting_entities, document.complete (5 total minimum)
         calls = mock_publisher.publish.call_args_list
-        assert calls[0][1]["event_type"] == "document.processing"
-        assert calls[0][1]["payload"]["stage"] == "extracting_text"
-        assert calls[1][1]["event_type"] == "document.processing"
-        assert calls[1][1]["payload"]["stage"] == "chunking"
-        assert calls[2][1]["event_type"] == "document.processing"
-        assert calls[2][1]["payload"]["stage"] == "chunking_complete"
-        assert calls[2][1]["payload"]["chunk_count"] == 2
-        assert calls[3][1]["event_type"] == "document.complete"
+        event_types = [c[1]["event_type"] for c in calls]
+        stages = [
+            c[1]["payload"].get("stage")
+            for c in calls
+            if c[1]["event_type"] == "document.processing"
+        ]
+
+        assert "extracting_text" in stages
+        assert "chunking" in stages
+        assert "chunking_complete" in stages
+        assert "extracting_entities" in stages
+        assert "document.complete" in event_types
+
+        # Verify document.complete includes entity/relationship counts
+        complete_events = [c for c in calls if c[1]["event_type"] == "document.complete"]
+        assert complete_events[0][1]["payload"]["entity_count"] == 3
+        assert complete_events[0][1]["payload"]["relationship_count"] == 1
 
         mock_publisher.close.assert_called_once()
 
     @patch("app.worker.tasks.process_document.STORAGE_ROOT", Path("/tmp/storage"))
+    @patch("app.worker.tasks.process_document.EntityExtractionService")
     @patch("app.worker.tasks.process_document.ChunkingService")
     @patch("app.worker.tasks.process_document.OllamaClient")
     @patch("app.worker.tasks.process_document.EventPublisher")
     @patch("app.worker.tasks.process_document.TextExtractionService")
     @patch("app.worker.tasks.process_document.SyncSessionLocal")
-    def test_extraction_failure(
+    def test_text_extraction_failure(
         self,
         mock_session_cls,
         mock_extraction_cls,
         mock_publisher_cls,
         mock_ollama_cls,
         mock_chunking_cls,
+        mock_entity_svc_cls,
         sample_doc_record,
     ):
-        """Failed extraction: status → failed, error_message stored."""
+        """Failed text extraction: status → failed, error_message stored."""
         from app.worker.tasks.process_document import process_document_task
 
         mock_session, mock_extractor, mock_publisher = _setup_mocks(
@@ -135,6 +155,7 @@ class TestProcessDocumentTask:
         mock_publisher.close.assert_called_once()
 
     @patch("app.worker.tasks.process_document.STORAGE_ROOT", Path("/tmp/storage"))
+    @patch("app.worker.tasks.process_document.EntityExtractionService")
     @patch("app.worker.tasks.process_document.ChunkingService")
     @patch("app.worker.tasks.process_document.OllamaClient")
     @patch("app.worker.tasks.process_document.EventPublisher")
@@ -147,6 +168,7 @@ class TestProcessDocumentTask:
         mock_publisher_cls,
         mock_ollama_cls,
         mock_chunking_cls,
+        mock_entity_svc_cls,
     ):
         """If document not found in DB, task should log error and return."""
         from app.worker.tasks.process_document import process_document_task
@@ -165,6 +187,7 @@ class TestProcessDocumentTask:
         mock_publisher.close.assert_called_once()
 
     @patch("app.worker.tasks.process_document.STORAGE_ROOT", Path("/tmp/storage"))
+    @patch("app.worker.tasks.process_document.EntityExtractionService")
     @patch("app.worker.tasks.process_document.ChunkingService")
     @patch("app.worker.tasks.process_document.OllamaClient")
     @patch("app.worker.tasks.process_document.EventPublisher")
@@ -177,6 +200,7 @@ class TestProcessDocumentTask:
         mock_publisher_cls,
         mock_ollama_cls,
         mock_chunking_cls,
+        mock_entity_svc_cls,
         sample_doc_record,
     ):
         """If event publishing fails, document status must remain correct."""
@@ -195,6 +219,10 @@ class TestProcessDocumentTask:
         mock_chunking.chunk_document.return_value = []
         mock_chunking_cls.return_value = mock_chunking
 
+        mock_entity_svc = MagicMock()
+        mock_entity_svc.extract_from_chunks.return_value = ExtractionSummary(0, 0, 0)
+        mock_entity_svc_cls.return_value = mock_entity_svc
+
         mock_publisher = MagicMock()
         mock_publisher.publish.side_effect = ConnectionError("Redis unavailable")
         mock_publisher_cls.return_value = mock_publisher
@@ -211,6 +239,7 @@ class TestProcessDocumentTask:
 
 class TestOllamaUnavailableHandling:
     @patch("app.worker.tasks.process_document.STORAGE_ROOT", Path("/tmp/storage"))
+    @patch("app.worker.tasks.process_document.EntityExtractionService")
     @patch("app.worker.tasks.process_document.ChunkingService")
     @patch("app.worker.tasks.process_document.OllamaClient")
     @patch("app.worker.tasks.process_document.EventPublisher")
@@ -223,6 +252,7 @@ class TestOllamaUnavailableHandling:
         mock_publisher_cls,
         mock_ollama_cls,
         mock_chunking_cls,
+        mock_entity_svc_cls,
         sample_doc_record,
     ):
         """If Ollama is unavailable, fail document immediately without extracting text."""
@@ -259,6 +289,7 @@ class TestOllamaUnavailableHandling:
 
 class TestChunkingStage:
     @patch("app.worker.tasks.process_document.STORAGE_ROOT", Path("/tmp/storage"))
+    @patch("app.worker.tasks.process_document.EntityExtractionService")
     @patch("app.worker.tasks.process_document.ChunkingService")
     @patch("app.worker.tasks.process_document.OllamaClient")
     @patch("app.worker.tasks.process_document.EventPublisher")
@@ -271,6 +302,7 @@ class TestChunkingStage:
         mock_publisher_cls,
         mock_ollama_cls,
         mock_chunking_cls,
+        mock_entity_svc_cls,
         sample_doc_record,
     ):
         """If chunking fails, document status should be 'failed'."""
@@ -305,6 +337,7 @@ class TestChunkingStage:
         mock_publisher.close.assert_called_once()
 
     @patch("app.worker.tasks.process_document.STORAGE_ROOT", Path("/tmp/storage"))
+    @patch("app.worker.tasks.process_document.EntityExtractionService")
     @patch("app.worker.tasks.process_document.ChunkingService")
     @patch("app.worker.tasks.process_document.OllamaClient")
     @patch("app.worker.tasks.process_document.EventPublisher")
@@ -317,6 +350,7 @@ class TestChunkingStage:
         mock_publisher_cls,
         mock_ollama_cls,
         mock_chunking_cls,
+        mock_entity_svc_cls,
         sample_doc_record,
     ):
         """Verify chunking stage publishes correct SSE events."""
@@ -334,6 +368,10 @@ class TestChunkingStage:
         mock_chunking = MagicMock()
         mock_chunking.chunk_document.return_value = [MagicMock()] * 5
         mock_chunking_cls.return_value = mock_chunking
+
+        mock_entity_svc = MagicMock()
+        mock_entity_svc.extract_from_chunks.return_value = ExtractionSummary(0, 0, 5)
+        mock_entity_svc_cls.return_value = mock_entity_svc
 
         process_document_task(
             str(sample_doc_record.id),
@@ -363,21 +401,23 @@ class TestChunkingStage:
         assert chunking_complete[0][1]["payload"]["chunk_count"] == 5
 
     @patch("app.worker.tasks.process_document.STORAGE_ROOT", Path("/tmp/storage"))
+    @patch("app.worker.tasks.process_document.EntityExtractionService")
     @patch("app.worker.tasks.process_document.ChunkingService")
     @patch("app.worker.tasks.process_document.OllamaClient")
     @patch("app.worker.tasks.process_document.EventPublisher")
     @patch("app.worker.tasks.process_document.TextExtractionService")
     @patch("app.worker.tasks.process_document.SyncSessionLocal")
-    def test_status_transitions_through_chunking(
+    def test_status_transitions_through_all_stages(
         self,
         mock_session_cls,
         mock_extraction_cls,
         mock_publisher_cls,
         mock_ollama_cls,
         mock_chunking_cls,
+        mock_entity_svc_cls,
         sample_doc_record,
     ):
-        """Verify status goes through: queued → extracting_text → chunking → complete."""
+        """Verify status goes through: extracting_text → chunking → extracting_entities → complete."""
         from app.worker.tasks.process_document import process_document_task
 
         status_log = []
@@ -403,6 +443,10 @@ class TestChunkingStage:
         mock_chunking.chunk_document.return_value = [MagicMock()]
         mock_chunking_cls.return_value = mock_chunking
 
+        mock_entity_svc = MagicMock()
+        mock_entity_svc.extract_from_chunks.return_value = ExtractionSummary(2, 1, 1)
+        mock_entity_svc_cls.return_value = mock_entity_svc
+
         try:
             process_document_task(
                 str(sample_doc_record.id),
@@ -413,9 +457,225 @@ class TestChunkingStage:
 
         assert "extracting_text" in status_log
         assert "chunking" in status_log
+        assert "extracting_entities" in status_log
         assert "complete" in status_log
         # Verify order
         et_idx = status_log.index("extracting_text")
         ch_idx = status_log.index("chunking")
+        ee_idx = status_log.index("extracting_entities")
         co_idx = status_log.index("complete")
-        assert et_idx < ch_idx < co_idx
+        assert et_idx < ch_idx < ee_idx < co_idx
+
+
+class TestEntityExtractionStage:
+    @patch("app.worker.tasks.process_document.STORAGE_ROOT", Path("/tmp/storage"))
+    @patch("app.worker.tasks.process_document.EntityExtractionService")
+    @patch("app.worker.tasks.process_document.ChunkingService")
+    @patch("app.worker.tasks.process_document.OllamaClient")
+    @patch("app.worker.tasks.process_document.EventPublisher")
+    @patch("app.worker.tasks.process_document.TextExtractionService")
+    @patch("app.worker.tasks.process_document.SyncSessionLocal")
+    def test_extracting_entities_stage_runs_after_chunking(
+        self,
+        mock_session_cls,
+        mock_extraction_cls,
+        mock_publisher_cls,
+        mock_ollama_cls,
+        mock_chunking_cls,
+        mock_entity_svc_cls,
+        sample_doc_record,
+    ):
+        """Pipeline runs extracting_entities stage after chunking."""
+        from app.worker.tasks.process_document import process_document_task
+
+        mock_session, mock_extractor, mock_publisher = _setup_mocks(
+            mock_session_cls, mock_extraction_cls, mock_publisher_cls, sample_doc_record
+        )
+        mock_extractor.extract_text.return_value = "text"
+
+        mock_ollama = MagicMock()
+        mock_ollama.check_available.return_value = True
+        mock_ollama_cls.return_value = mock_ollama
+
+        mock_chunking = MagicMock()
+        chunks = [MagicMock(), MagicMock()]
+        mock_chunking.chunk_document.return_value = chunks
+        mock_chunking_cls.return_value = mock_chunking
+
+        mock_entity_svc = MagicMock()
+        mock_entity_svc.extract_from_chunks.return_value = ExtractionSummary(3, 1, 2)
+        mock_entity_svc_cls.return_value = mock_entity_svc
+
+        process_document_task(
+            str(sample_doc_record.id),
+            str(sample_doc_record.investigation_id),
+        )
+
+        assert sample_doc_record.status == "complete"
+        mock_entity_svc.extract_from_chunks.assert_called_once()
+
+        calls = mock_publisher.publish.call_args_list
+        extracting_entities_events = [
+            c for c in calls
+            if c[1]["event_type"] == "document.processing"
+            and c[1]["payload"].get("stage") == "extracting_entities"
+        ]
+        assert len(extracting_entities_events) == 1
+        assert extracting_entities_events[0][1]["payload"]["chunk_count"] == 2
+
+    @patch("app.worker.tasks.process_document.STORAGE_ROOT", Path("/tmp/storage"))
+    @patch("app.worker.tasks.process_document.EntityExtractionService")
+    @patch("app.worker.tasks.process_document.ChunkingService")
+    @patch("app.worker.tasks.process_document.OllamaClient")
+    @patch("app.worker.tasks.process_document.EventPublisher")
+    @patch("app.worker.tasks.process_document.TextExtractionService")
+    @patch("app.worker.tasks.process_document.SyncSessionLocal")
+    def test_entity_discovered_sse_events_published(
+        self,
+        mock_session_cls,
+        mock_extraction_cls,
+        mock_publisher_cls,
+        mock_ollama_cls,
+        mock_chunking_cls,
+        mock_entity_svc_cls,
+        sample_doc_record,
+    ):
+        """entity.discovered SSE events are published during extraction via callback."""
+        from app.llm.schemas import EntityType, ExtractedEntity
+        from app.worker.tasks.process_document import process_document_task
+
+        mock_session, mock_extractor, mock_publisher = _setup_mocks(
+            mock_session_cls, mock_extraction_cls, mock_publisher_cls, sample_doc_record
+        )
+        mock_extractor.extract_text.return_value = "text"
+
+        mock_ollama = MagicMock()
+        mock_ollama.check_available.return_value = True
+        mock_ollama_cls.return_value = mock_ollama
+
+        mock_chunking = MagicMock()
+        mock_chunking.chunk_document.return_value = [MagicMock()]
+        mock_chunking_cls.return_value = mock_chunking
+
+        # Simulate extract_from_chunks calling the on_entity_discovered callback
+        def fake_extract(chunks, investigation_id, on_entity_discovered=None):
+            if on_entity_discovered:
+                entity = ExtractedEntity(name="John Smith", type=EntityType.person, confidence=0.9)
+                on_entity_discovered(entity)
+            return ExtractionSummary(1, 0, 1)
+
+        mock_entity_svc = MagicMock()
+        mock_entity_svc.extract_from_chunks.side_effect = fake_extract
+        mock_entity_svc_cls.return_value = mock_entity_svc
+
+        process_document_task(
+            str(sample_doc_record.id),
+            str(sample_doc_record.investigation_id),
+        )
+
+        calls = mock_publisher.publish.call_args_list
+        entity_discovered_events = [
+            c for c in calls if c[1]["event_type"] == "entity.discovered"
+        ]
+        assert len(entity_discovered_events) == 1
+        assert entity_discovered_events[0][1]["payload"]["entity_name"] == "John Smith"
+        assert entity_discovered_events[0][1]["payload"]["entity_type"] == "person"
+
+    @patch("app.worker.tasks.process_document.STORAGE_ROOT", Path("/tmp/storage"))
+    @patch("app.worker.tasks.process_document.EntityExtractionService")
+    @patch("app.worker.tasks.process_document.ChunkingService")
+    @patch("app.worker.tasks.process_document.OllamaClient")
+    @patch("app.worker.tasks.process_document.EventPublisher")
+    @patch("app.worker.tasks.process_document.TextExtractionService")
+    @patch("app.worker.tasks.process_document.SyncSessionLocal")
+    def test_extraction_failure_marks_document_failed(
+        self,
+        mock_session_cls,
+        mock_extraction_cls,
+        mock_publisher_cls,
+        mock_ollama_cls,
+        mock_chunking_cls,
+        mock_entity_svc_cls,
+        sample_doc_record,
+    ):
+        """Extraction failure → document.status = failed, document.failed SSE published."""
+        from app.worker.tasks.process_document import process_document_task
+
+        mock_session, mock_extractor, mock_publisher = _setup_mocks(
+            mock_session_cls, mock_extraction_cls, mock_publisher_cls, sample_doc_record
+        )
+        mock_extractor.extract_text.return_value = "text"
+
+        mock_ollama = MagicMock()
+        mock_ollama.check_available.return_value = True
+        mock_ollama_cls.return_value = mock_ollama
+
+        mock_chunking = MagicMock()
+        mock_chunking.chunk_document.return_value = [MagicMock()]
+        mock_chunking_cls.return_value = mock_chunking
+
+        mock_entity_svc = MagicMock()
+        mock_entity_svc.extract_from_chunks.side_effect = RuntimeError("neo4j down")
+        mock_entity_svc_cls.return_value = mock_entity_svc
+
+        process_document_task(
+            str(sample_doc_record.id),
+            str(sample_doc_record.investigation_id),
+        )
+
+        assert sample_doc_record.status == "failed"
+        assert "Entity extraction failed" in sample_doc_record.error_message
+
+        calls = mock_publisher.publish.call_args_list
+        assert any(c[1]["event_type"] == "document.failed" for c in calls)
+        # Verify rollback was called before failure commit
+        mock_session.rollback.assert_called()
+
+    @patch("app.worker.tasks.process_document.STORAGE_ROOT", Path("/tmp/storage"))
+    @patch("app.worker.tasks.process_document.EntityExtractionService")
+    @patch("app.worker.tasks.process_document.ChunkingService")
+    @patch("app.worker.tasks.process_document.OllamaClient")
+    @patch("app.worker.tasks.process_document.EventPublisher")
+    @patch("app.worker.tasks.process_document.TextExtractionService")
+    @patch("app.worker.tasks.process_document.SyncSessionLocal")
+    def test_document_complete_includes_entity_counts(
+        self,
+        mock_session_cls,
+        mock_extraction_cls,
+        mock_publisher_cls,
+        mock_ollama_cls,
+        mock_chunking_cls,
+        mock_entity_svc_cls,
+        sample_doc_record,
+    ):
+        """document.complete event includes entity_count and relationship_count."""
+        from app.worker.tasks.process_document import process_document_task
+
+        mock_session, mock_extractor, mock_publisher = _setup_mocks(
+            mock_session_cls, mock_extraction_cls, mock_publisher_cls, sample_doc_record
+        )
+        mock_extractor.extract_text.return_value = "text"
+
+        mock_ollama = MagicMock()
+        mock_ollama.check_available.return_value = True
+        mock_ollama_cls.return_value = mock_ollama
+
+        mock_chunking = MagicMock()
+        mock_chunking.chunk_document.return_value = [MagicMock()]
+        mock_chunking_cls.return_value = mock_chunking
+
+        mock_entity_svc = MagicMock()
+        mock_entity_svc.extract_from_chunks.return_value = ExtractionSummary(5, 3, 1)
+        mock_entity_svc_cls.return_value = mock_entity_svc
+
+        process_document_task(
+            str(sample_doc_record.id),
+            str(sample_doc_record.investigation_id),
+        )
+
+        calls = mock_publisher.publish.call_args_list
+        complete_events = [c for c in calls if c[1]["event_type"] == "document.complete"]
+        assert len(complete_events) == 1
+        payload = complete_events[0][1]["payload"]
+        assert payload["entity_count"] == 5
+        assert payload["relationship_count"] == 3

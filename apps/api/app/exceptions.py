@@ -69,6 +69,11 @@ class ChunkingError(DomainError):
         super().__init__(detail, status_code=422, error_type="chunking_failed")
 
 
+class EntityExtractionError(DomainError):
+    def __init__(self, detail: str = "Entity extraction failed"):
+        super().__init__(detail, status_code=422, error_type="entity_extraction_failed")
+
+
 async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
