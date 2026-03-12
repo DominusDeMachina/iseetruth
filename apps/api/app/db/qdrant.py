@@ -4,12 +4,21 @@ from qdrant_client.models import Distance, VectorParams
 
 from app.config import get_settings
 
-settings = get_settings()
-
-client = QdrantClient(url=settings.qdrant_url)
-
 COLLECTION_NAME = "document_chunks"
 VECTOR_SIZE = 4096  # qwen3-embedding:8b default output dimensions
+
+# Lazy singleton — avoids creating a QdrantClient at import time, which is not
+# fork-safe (Celery prefork workers inherit broken connection state → SIGSEGV).
+_client: QdrantClient | None = None
+
+
+def get_client() -> QdrantClient:
+    """Return a module-level QdrantClient, creating it on first call."""
+    global _client
+    if _client is None:
+        settings = get_settings()
+        _client = QdrantClient(url=settings.qdrant_url)
+    return _client
 
 
 def ensure_qdrant_collection(qdrant_client: QdrantClient) -> None:

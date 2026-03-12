@@ -9,7 +9,7 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.db.neo4j import driver as neo4j_driver
 from app.db.postgres import async_session_factory
-from app.db.qdrant import client as qdrant_client
+from app.db.qdrant import get_client as get_qdrant_client
 from app.db.redis import client as redis_client
 from app.schemas.health import (
     HealthResponse,
@@ -61,7 +61,7 @@ class HealthService:
     async def check_qdrant(self) -> ServiceStatus:
         try:
             info = await asyncio.wait_for(
-                asyncio.to_thread(qdrant_client.info), timeout=CHECK_TIMEOUT
+                asyncio.to_thread(get_qdrant_client().info), timeout=CHECK_TIMEOUT
             )
             version = getattr(info, "version", "unknown")
             return ServiceStatus(

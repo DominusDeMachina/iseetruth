@@ -70,7 +70,7 @@ async def test_check_qdrant_unavailable(svc):
 
     mock_client = MagicMock()
     mock_client.info.side_effect = Exception("connection refused")
-    with patch("app.services.health.qdrant_client", mock_client):
+    with patch("app.services.health.get_qdrant_client", return_value=mock_client):
         result = await svc.check_qdrant()
     assert result.status == "unavailable"
 

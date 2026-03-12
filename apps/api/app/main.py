@@ -10,7 +10,7 @@ from loguru import logger
 from app.api.v1.router import v1_router
 from app.config import get_settings
 from app.db.neo4j import driver as neo4j_driver
-from app.db.qdrant import client as qdrant_client_sync, ensure_qdrant_collection
+from app.db.qdrant import get_client as get_qdrant_client, ensure_qdrant_collection
 from app.db.redis import client as redis_client
 from app.db.sync_neo4j import sync_neo4j_driver
 from app.exceptions import DomainError, domain_error_handler, generic_error_handler
@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
     logger.info("Neo4j constraints setup complete")
 
     logger.info("Setting up Qdrant collection")
-    await asyncio.to_thread(ensure_qdrant_collection, qdrant_client_sync)
+    await asyncio.to_thread(ensure_qdrant_collection, get_qdrant_client())
     logger.info("Qdrant collection setup complete")
 
     logger.info("Application startup complete")

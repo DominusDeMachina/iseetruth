@@ -4,8 +4,6 @@ from pathlib import Path
 from loguru import logger
 
 from app.config import get_settings
-from app.db.qdrant import client as qdrant_sync_client
-from app.db.sync_neo4j import sync_neo4j_driver
 from app.db.sync_postgres import SyncSessionLocal
 from app.llm.client import OllamaClient
 from app.llm.embeddings import EMBEDDING_MODEL, OllamaEmbeddingClient
@@ -24,6 +22,19 @@ STORAGE_ROOT = Path(os.environ.get("STORAGE_ROOT", "storage"))
 @celery_app.task(name="process_document")
 def process_document_task(document_id: str, investigation_id: str) -> None:
     """Process a document: extract text, chunk, and prepare for entity extraction."""
+    # Create clients here (not at module level) — fork-safety: module-level Neo4j/Qdrant
+    # singletons inherit file descriptors and thread state into forked children → SIGSEGV.
+    from app.db.qdrant import ensure_qdrant_collection
+    from neo4j import GraphDatabase
+    from qdrant_client import QdrantClient
+
+    _auth_parts = settings.neo4j_auth.split("/", 1)
+    neo4j_driver = GraphDatabase.driver(
+        settings.neo4j_uri, auth=(_auth_parts[0], _auth_parts[1])
+    )
+    qdrant_client = QdrantClient(url=settings.qdrant_url)
+    ensure_qdrant_collection(qdrant_client)
+
     publisher = EventPublisher(settings.celery_broker_url)
 
     def _publish_safe(event_type: str, payload: dict) -> None:
@@ -190,7 +201,7 @@ def process_document_task(document_id: str, investigation_id: str) -> None:
             )
 
             try:
-                extraction_service = EntityExtractionService(ollama_client, sync_neo4j_driver)
+                extraction_service = EntityExtractionService(ollama_client, neo4j_driver)
 
                 def on_entity_discovered(entity) -> None:
                     _publish_safe(
@@ -249,7 +260,7 @@ def process_document_task(document_id: str, investigation_id: str) -> None:
                 )
 
                 embedding_client = OllamaEmbeddingClient(settings.ollama_base_url)
-                embedding_service = EmbeddingService(embedding_client, qdrant_sync_client)
+                embedding_service = EmbeddingService(embedding_client, qdrant_client)
                 emb_summary = embedding_service.embed_chunks(
                     chunks, investigation_id=document.investigation_id
                 )
@@ -310,3 +321,4 @@ def process_document_task(document_id: str, investigation_id: str) -> None:
                 return
     finally:
         publisher.close()
+        neo4j_driver.close()

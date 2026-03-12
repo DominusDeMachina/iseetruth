@@ -37,7 +37,7 @@ def mock_qdrant():
     mock_info = MagicMock()
     mock_info.version = "1.17.0"
     mock_client.info.return_value = mock_info
-    with patch("app.services.health.qdrant_client", mock_client):
+    with patch("app.services.health.get_qdrant_client", return_value=mock_client):
         yield mock_client
 
 
