@@ -23,6 +23,9 @@ def investigation_id():
 def sample_chunk():
     chunk = MagicMock()
     chunk.id = uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+    chunk.document_id = uuid.UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
+    chunk.page_start = 1
+    chunk.page_end = 3
     chunk.text = "John Smith works at Acme Corp in New York."
     return chunk
 
@@ -399,8 +402,9 @@ class TestEnsureNeo4jConstraints:
 
         ensure_neo4j_constraints(mock_driver)
 
-        # Should have been called for Person, Organization, Location (constraints + indexes = 6 calls)
-        assert mock_session.run.call_count == 6
+        # 3 entity uniqueness constraints + 3 entity investigation_id indexes
+        # + 3 entity id indexes + 1 Document constraint + 1 Document index = 11 calls
+        assert mock_session.run.call_count == 11
 
     def test_constraints_are_idempotent(self):
         """Calling ensure_neo4j_constraints twice should not raise."""
@@ -414,4 +418,69 @@ class TestEnsureNeo4jConstraints:
         ensure_neo4j_constraints(mock_driver)
         ensure_neo4j_constraints(mock_driver)
 
-        assert mock_session.run.call_count == 12  # 6 per call
+        assert mock_session.run.call_count == 22  # 11 per call
+
+
+# ---------------------------------------------------------------------------
+# Tests: _store_in_neo4j — MENTIONED_IN provenance edges (Story 3.3)
+# ---------------------------------------------------------------------------
+
+class TestStoreInNeo4jProvenance:
+    def _get_all_cypher(self, mock_session):
+        """Run the captured write transaction and collect all Cypher strings."""
+        write_fn = mock_session.execute_write.call_args[0][0]
+        mock_tx = MagicMock()
+        write_fn(mock_tx)
+        return [call[0][0] for call in mock_tx.run.call_args_list]
+
+    def test_mentioned_in_edge_written_for_entity(
+        self, mock_ollama, mock_neo4j_driver, sample_chunk, person_entity, investigation_id
+    ):
+        """MENTIONED_IN edge is written with correct AC1 properties."""
+        mock_session = MagicMock()
+        mock_neo4j_driver.session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_neo4j_driver.session.return_value.__exit__ = MagicMock(return_value=False)
+
+        service = EntityExtractionService(mock_ollama, mock_neo4j_driver)
+        service._store_in_neo4j(sample_chunk, [person_entity], [], investigation_id)
+
+        write_fn = mock_session.execute_write.call_args[0][0]
+        mock_tx = MagicMock()
+        write_fn(mock_tx)
+        cypher_calls = mock_tx.run.call_args_list
+
+        # Find the MENTIONED_IN call
+        mentioned_in_call = next(
+            c for c in cypher_calls if "MENTIONED_IN" in c[0][0]
+        )
+        kwargs = mentioned_in_call[1]
+
+        assert kwargs["chunk_id"] == str(sample_chunk.id)
+        assert kwargs["page_start"] == sample_chunk.page_start
+        assert kwargs["page_end"] == sample_chunk.page_end
+        assert kwargs["text_excerpt"] == sample_chunk.text[:500]
+        assert kwargs["doc_id"] == str(sample_chunk.document_id)
+
+    def test_document_node_merged_in_write_tx(
+        self, mock_ollama, mock_neo4j_driver, sample_chunk, person_entity, investigation_id
+    ):
+        """Document node MERGE is issued within the write transaction."""
+        mock_session = MagicMock()
+        mock_neo4j_driver.session.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_neo4j_driver.session.return_value.__exit__ = MagicMock(return_value=False)
+
+        service = EntityExtractionService(mock_ollama, mock_neo4j_driver)
+        service._store_in_neo4j(sample_chunk, [person_entity], [], investigation_id)
+
+        all_cypher = " ".join(self._get_all_cypher(mock_session))
+        assert "Document" in all_cypher
+        assert "MERGE" in all_cypher
+
+    def test_no_mentioned_in_when_no_entities(
+        self, mock_ollama, mock_neo4j_driver, sample_chunk, investigation_id
+    ):
+        """No Neo4j session opened when entities list is empty."""
+        service = EntityExtractionService(mock_ollama, mock_neo4j_driver)
+        service._store_in_neo4j(sample_chunk, [], [], investigation_id)
+
+        mock_neo4j_driver.session.assert_not_called()

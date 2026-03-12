@@ -74,6 +74,15 @@ class EntityExtractionError(DomainError):
         super().__init__(detail, status_code=422, error_type="entity_extraction_failed")
 
 
+class EntityNotFoundError(DomainError):
+    def __init__(self, entity_id: str):
+        super().__init__(
+            detail=f"No entity found with id: {entity_id}",
+            status_code=404,
+            error_type="entity_not_found",
+        )
+
+
 async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,

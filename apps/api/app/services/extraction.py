@@ -140,14 +140,19 @@ class EntityExtractionService:
         relationships: list[ExtractedRelationship],
         investigation_id: uuid.UUID,
     ) -> None:
-        """Atomically store entities and relationships in Neo4j using MERGE."""
+        """Atomically store entities, relationships, and provenance edges in Neo4j."""
         if not entities and not relationships:
             return
 
         entity_type_map = {e.name: e.type.value.capitalize() for e in entities}
+        inv_id_str = str(investigation_id)
+        doc_id_str = str(chunk.document_id)
+        chunk_id_str = str(chunk.id)
+        text_excerpt = chunk.text[:500]
 
         with self.neo4j_driver.session() as session:
             def _write_tx(tx):
+                # --- Phase 1: MERGE entity nodes ---
                 for entity in entities:
                     label = entity.type.value.capitalize()
                     tx.run(
@@ -157,11 +162,36 @@ class EntityExtractionService:
                         "THEN $confidence ELSE e.confidence_score END",
                         name=entity.name,
                         type=entity.type.value,
-                        investigation_id=str(investigation_id),
+                        investigation_id=inv_id_str,
                         id=str(uuid.uuid4()),
                         confidence=entity.confidence,
                     )
 
+                # --- Phase 2: MERGE Document node + MENTIONED_IN provenance edges ---
+                if entities:
+                    tx.run(
+                        "MERGE (d:Document {id: $doc_id, investigation_id: $inv_id})",
+                        doc_id=doc_id_str,
+                        inv_id=inv_id_str,
+                    )
+                for entity in entities:
+                    label = entity.type.value.capitalize()
+                    tx.run(
+                        f"MATCH (e:{label} {{name: $name, investigation_id: $inv_id}}) "
+                        "MATCH (d:Document {id: $doc_id, investigation_id: $inv_id}) "
+                        "MERGE (e)-[m:MENTIONED_IN {chunk_id: $chunk_id}]->(d) "
+                        "ON CREATE SET m.page_start = $page_start, m.page_end = $page_end, "
+                        "m.text_excerpt = $text_excerpt",
+                        name=entity.name,
+                        inv_id=inv_id_str,
+                        doc_id=doc_id_str,
+                        chunk_id=chunk_id_str,
+                        page_start=chunk.page_start,
+                        page_end=chunk.page_end,
+                        text_excerpt=text_excerpt,
+                    )
+
+                # --- Phase 3: MERGE entity-to-entity relationship edges ---
                 for rel in relationships:
                     src_label = entity_type_map.get(rel.source_entity_name)
                     tgt_label = entity_type_map.get(rel.target_entity_name)
@@ -177,27 +207,45 @@ class EntityExtractionService:
                         "THEN $confidence ELSE r.confidence_score END",
                         src_name=rel.source_entity_name,
                         tgt_name=rel.target_entity_name,
-                        inv_id=str(investigation_id),
+                        inv_id=inv_id_str,
                         confidence=rel.confidence,
-                        chunk_id=str(chunk.id),
+                        chunk_id=chunk_id_str,
                     )
 
             session.execute_write(_write_tx)
 
 
 def ensure_neo4j_constraints(driver) -> None:
-    """Create uniqueness constraints and investigation_id indexes for Neo4j entity nodes.
+    """Create uniqueness constraints and indexes for Neo4j entity and document nodes.
 
     Idempotent — safe to call on every deploy.
     """
     with driver.session() as session:
+        # Entity uniqueness constraints (name, type, investigation_id)
         for label in ("Person", "Organization", "Location"):
             session.run(
                 f"CREATE CONSTRAINT {label.lower()}_unique IF NOT EXISTS "
                 f"FOR (n:{label}) REQUIRE (n.name, n.type, n.investigation_id) IS UNIQUE"
             )
+        # Entity investigation_id indexes (fast per-investigation queries)
         for label in ("Person", "Organization", "Location"):
             session.run(
                 f"CREATE INDEX entity_investigation_idx_{label.lower()} IF NOT EXISTS "
                 f"FOR (n:{label}) ON (n.investigation_id)"
             )
+        # Entity id indexes (fast API lookup by UUID)
+        for label in ("Person", "Organization", "Location"):
+            session.run(
+                f"CREATE INDEX entity_id_idx_{label.lower()} IF NOT EXISTS "
+                f"FOR (n:{label}) ON (n.id)"
+            )
+        # Document uniqueness constraint (id, investigation_id)
+        session.run(
+            "CREATE CONSTRAINT document_unique IF NOT EXISTS "
+            "FOR (n:Document) REQUIRE (n.id, n.investigation_id) IS UNIQUE"
+        )
+        # Document investigation_id index
+        session.run(
+            "CREATE INDEX document_investigation_idx IF NOT EXISTS "
+            "FOR (n:Document) ON (n.investigation_id)"
+        )
