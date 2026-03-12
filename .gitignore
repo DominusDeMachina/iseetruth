@@ -24,3 +24,7 @@ dist/
 
 # OS
 .DS_Store
+
+# Debug / scratch logs
+*.log
+ollama_logs.txt

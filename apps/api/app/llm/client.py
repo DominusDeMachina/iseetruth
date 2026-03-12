@@ -7,7 +7,9 @@ from app.exceptions import OllamaUnavailableError
 __all__ = ["OllamaClient", "OllamaUnavailableError"]
 
 # Timeouts
-INFERENCE_TIMEOUT = 300.0  # LLM inference can be slow; allows for cold start + 9B model
+# connect/write/pool are short — fail fast if Ollama is unreachable.
+# read=None — no limit on response body; Ollama can take as long as it needs to generate.
+INFERENCE_TIMEOUT = httpx.Timeout(connect=5.0, read=None, write=10.0, pool=5.0)
 CHECK_TIMEOUT = 5.0
 
 DEFAULT_MODEL = "qwen3.5:9b"
@@ -81,10 +83,10 @@ class OllamaClient:
                 f"Ollama unavailable for generate: {exc}"
             ) from exc
 
-    def check_available(self) -> bool:
-        """Check if Ollama is running and the required model is available.
+    def check_available(self, model: str = DEFAULT_MODEL) -> bool:
+        """Check if Ollama is running and the specified model is available.
 
-        Returns True if the default model is in the list, False otherwise.
+        Returns True if the model is in the list, False otherwise.
         Never raises — returns False on any error.
         """
         try:
@@ -93,11 +95,11 @@ class OllamaClient:
                 response.raise_for_status()
                 data = response.json()
                 models = [m["name"] for m in data.get("models", [])]
-                available = DEFAULT_MODEL in models
+                available = model in models
                 if not available:
                     logger.warning(
                         "Required model not found in Ollama",
-                        required=DEFAULT_MODEL,
+                        required=model,
                         available=models,
                     )
                 return available

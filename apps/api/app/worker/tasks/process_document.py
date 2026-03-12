@@ -4,11 +4,14 @@ from pathlib import Path
 from loguru import logger
 
 from app.config import get_settings
+from app.db.qdrant import client as qdrant_sync_client
 from app.db.sync_neo4j import sync_neo4j_driver
 from app.db.sync_postgres import SyncSessionLocal
 from app.llm.client import OllamaClient
+from app.llm.embeddings import EMBEDDING_MODEL, OllamaEmbeddingClient
 from app.models.document import Document
 from app.services.chunking import ChunkingService
+from app.services.embedding import EmbeddingService
 from app.services.events import EventPublisher
 from app.services.extraction import EntityExtractionService
 from app.services.text_extraction import TextExtractionService
@@ -66,6 +69,14 @@ def process_document_task(document_id: str, investigation_id: str) -> None:
                     },
                 )
                 return
+
+            # Warn if embedding model is absent — Stage 4 will complete with 0 embeddings
+            if not ollama_client.check_available(model=EMBEDDING_MODEL):
+                logger.warning(
+                    "Embedding model unavailable — Stage 4 will produce 0 embeddings",
+                    model=EMBEDDING_MODEL,
+                    document_id=document_id,
+                )
 
             # Stage 1: Text extraction
             document.status = "extracting_text"
@@ -222,25 +233,80 @@ def process_document_task(document_id: str, investigation_id: str) -> None:
                 )
                 return
 
-            # All stages complete
-            document.status = "complete"
-            session.commit()
+            # Stage 4: Embedding generation
+            try:
+                document.status = "embedding"
+                session.commit()
 
-            logger.info(
-                "Document processing complete",
-                document_id=document_id,
-                investigation_id=investigation_id,
-                entity_count=summary.entity_count,
-                relationship_count=summary.relationship_count,
-            )
+                _publish_safe(
+                    "document.processing",
+                    {
+                        "document_id": document_id,
+                        "stage": "embedding",
+                        "chunk_count": len(chunks),
+                        "progress": 0.0,
+                    },
+                )
 
-            _publish_safe(
-                "document.complete",
-                {
-                    "document_id": document_id,
-                    "entity_count": summary.entity_count,
-                    "relationship_count": summary.relationship_count,
-                },
-            )
+                embedding_client = OllamaEmbeddingClient(settings.ollama_base_url)
+                embedding_service = EmbeddingService(embedding_client, qdrant_sync_client)
+                emb_summary = embedding_service.embed_chunks(
+                    chunks, investigation_id=document.investigation_id
+                )
+
+                if emb_summary.failed_count > 0:
+                    logger.warning(
+                        "Some chunks failed embedding — partial embeddings stored",
+                        document_id=document_id,
+                        embedded_count=emb_summary.embedded_count,
+                        failed_count=emb_summary.failed_count,
+                    )
+                else:
+                    logger.info(
+                        "Embedding generation complete",
+                        document_id=document_id,
+                        embedded_count=emb_summary.embedded_count,
+                    )
+
+                # All stages complete
+                document.status = "complete"
+                session.commit()
+
+                logger.info(
+                    "Document processing complete",
+                    document_id=document_id,
+                    investigation_id=investigation_id,
+                    entity_count=summary.entity_count,
+                    relationship_count=summary.relationship_count,
+                    embedded_count=emb_summary.embedded_count,
+                )
+
+                _publish_safe(
+                    "document.complete",
+                    {
+                        "document_id": document_id,
+                        "entity_count": summary.entity_count,
+                        "relationship_count": summary.relationship_count,
+                        "embedded_count": emb_summary.embedded_count,
+                    },
+                )
+
+            except Exception as exc:
+                session.rollback()
+                document.status = "failed"
+                document.error_message = f"Embedding stage failed: {exc}"
+                session.commit()
+
+                logger.error(
+                    "Embedding stage infrastructure failed",
+                    document_id=document_id,
+                    error=str(exc),
+                )
+
+                _publish_safe(
+                    "document.failed",
+                    {"document_id": document_id, "error": f"Embedding stage failed: {exc}"},
+                )
+                return
     finally:
         publisher.close()
