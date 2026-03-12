@@ -13,6 +13,7 @@ const mockDocument: DocumentResponse = {
   page_count: 12,
   extracted_text: null,
   error_message: null,
+  extraction_quality: null,
   created_at: "2026-03-08T12:00:00Z",
   updated_at: "2026-03-08T12:00:00Z",
 };
@@ -93,5 +94,39 @@ describe("DocumentCard", () => {
     expect(
       screen.queryByRole("button", { name: /view text/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows high confidence badge when extraction_quality is 'high'", () => {
+    const doc = { ...mockDocument, status: "complete", extraction_quality: "high" as const };
+    render(<DocumentCard document={doc} onDelete={vi.fn()} />);
+    expect(screen.getByText(/High confidence/)).toBeInTheDocument();
+  });
+
+  it("shows medium confidence badge when extraction_quality is 'medium'", () => {
+    const doc = { ...mockDocument, status: "complete", extraction_quality: "medium" as const };
+    render(<DocumentCard document={doc} onDelete={vi.fn()} />);
+    expect(screen.getByText(/Medium confidence/)).toBeInTheDocument();
+  });
+
+  it("shows low confidence badge with warning icon when extraction_quality is 'low'", () => {
+    const doc = { ...mockDocument, status: "complete", extraction_quality: "low" as const };
+    render(<DocumentCard document={doc} onDelete={vi.fn()} />);
+    expect(screen.getByText(/Low confidence/)).toBeInTheDocument();
+  });
+
+  it("does not show confidence badge when extraction_quality is null", () => {
+    render(<DocumentCard document={mockDocument} onDelete={vi.fn()} />);
+    expect(screen.queryByText(/confidence/i)).not.toBeInTheDocument();
+  });
+
+  it("shows entity count when entity_count is present", () => {
+    const doc = { ...mockDocument, status: "complete", entity_count: 12 };
+    render(<DocumentCard document={doc} onDelete={vi.fn()} />);
+    expect(screen.getByText("12 entities")).toBeInTheDocument();
+  });
+
+  it("does not show entity count when entity_count is null", () => {
+    render(<DocumentCard document={mockDocument} onDelete={vi.fn()} />);
+    expect(screen.queryByText(/entities/)).not.toBeInTheDocument();
   });
 });

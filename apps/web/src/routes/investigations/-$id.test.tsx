@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ProcessingDashboard } from "@/components/investigation/ProcessingDashboard";
+import { EntitySummaryBar } from "@/components/investigation/EntitySummaryBar";
 import type { DocumentListResponse } from "@/hooks/useDocuments";
 
 function makeDoc(
@@ -18,6 +19,7 @@ function makeDoc(
     page_count: null,
     extracted_text: null,
     error_message: null,
+    extraction_quality: null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     ...overrides,
@@ -32,6 +34,26 @@ function renderWithQuery(ui: React.ReactElement) {
     <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
   );
 }
+
+describe("EntitySummaryBar integration", () => {
+  it("renders entity summary bar with type counts", () => {
+    const summary = { people: 5, organizations: 3, locations: 2, total: 10 };
+
+    renderWithQuery(<EntitySummaryBar summary={summary} />);
+
+    expect(screen.getByText("10 entities")).toBeInTheDocument();
+    expect(screen.getByText(/5 people/)).toBeInTheDocument();
+    expect(screen.getByText(/3 orgs/)).toBeInTheDocument();
+    expect(screen.getByText(/2 locations/)).toBeInTheDocument();
+  });
+
+  it("renders nothing when total is 0", () => {
+    const summary = { people: 0, organizations: 0, locations: 0, total: 0 };
+
+    const { container } = renderWithQuery(<EntitySummaryBar summary={summary} />);
+    expect(container.firstChild).toBeNull();
+  });
+});
 
 describe("Investigation Detail Page — SSE Integration", () => {
   it("shows Live indicator and progress when connected with processing docs", () => {

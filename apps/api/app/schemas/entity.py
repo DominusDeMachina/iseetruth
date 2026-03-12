@@ -18,6 +18,28 @@ class EntitySource(BaseModel):
     text_excerpt: str
 
 
+class EntityListItem(BaseModel):
+    id: str
+    name: str
+    type: str
+    confidence_score: float
+    source_count: int
+    evidence_strength: str
+
+
+class EntityTypeSummary(BaseModel):
+    people: int
+    organizations: int
+    locations: int
+    total: int
+
+
+class EntityListResponse(BaseModel):
+    items: list[EntityListItem]
+    total: int
+    summary: EntityTypeSummary
+
+
 class EntityDetailResponse(BaseModel):
     id: str
     name: str

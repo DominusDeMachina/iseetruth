@@ -8,10 +8,12 @@ import {
   useDeleteDocument,
 } from "@/hooks/useDocuments";
 import { useSSE } from "@/hooks/useSSE";
+import { useEntities } from "@/hooks/useEntities";
 import { DocumentUploadZone } from "@/components/investigation/DocumentUploadZone";
 import { DocumentList } from "@/components/investigation/DocumentList";
 import { DocumentTextViewer } from "@/components/investigation/DocumentTextViewer";
 import { ProcessingDashboard } from "@/components/investigation/ProcessingDashboard";
+import { EntitySummaryBar } from "@/components/investigation/EntitySummaryBar";
 
 export const Route = createFileRoute("/investigations/$id")({
   component: InvestigationDetail,
@@ -26,7 +28,10 @@ function InvestigationDetail() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
 
+  const { data: entitiesData } = useEntities(id);
+
   const documents = documentsData?.items ?? [];
+  const hasCompleted = documents.some((d) => d.status === "complete");
   const hasProcessing = documents.some(
     (d) => d.status === "queued" || d.status === "extracting_text",
   );
@@ -93,6 +98,10 @@ function InvestigationDetail() {
           isConnected={isConnected}
           connectionError={connectionError}
         />
+      )}
+
+      {hasCompleted && entitiesData?.summary && (
+        <EntitySummaryBar summary={entitiesData.summary} />
       )}
 
       <DocumentList

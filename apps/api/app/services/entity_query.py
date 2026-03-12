@@ -5,13 +5,80 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.document import Document
-from app.schemas.entity import EntityDetailResponse, EntityRelationship, EntitySource
+from app.schemas.entity import (
+    EntityDetailResponse,
+    EntityListItem,
+    EntityListResponse,
+    EntityRelationship,
+    EntitySource,
+    EntityTypeSummary,
+)
 
 
 class EntityQueryService:
     def __init__(self, neo4j_driver, db: AsyncSession):
         self.neo4j_driver = neo4j_driver
         self.db = db
+
+    async def list_entities(
+        self,
+        investigation_id: uuid.UUID,
+        entity_type: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> EntityListResponse:
+        """Return paginated entity list with confidence scores and summary counts."""
+        inv_id_str = str(investigation_id)
+
+        async with self.neo4j_driver.session() as session:
+            # Fetch all entities (pre-pagination) for summary counts
+            all_records = await session.execute_read(
+                _fetch_entity_list, inv_id_str, entity_type
+            )
+
+        # Compute summary from full result set
+        type_counts: dict[str, int] = {"Person": 0, "Organization": 0, "Location": 0}
+        for record in all_records:
+            label = record["type"]
+            if label in type_counts:
+                type_counts[label] += 1
+
+        summary = EntityTypeSummary(
+            people=type_counts["Person"],
+            organizations=type_counts["Organization"],
+            locations=type_counts["Location"],
+            total=len(all_records),
+        )
+
+        # Sort by confidence DESC, apply pagination
+        sorted_records = sorted(
+            all_records, key=lambda r: r.get("confidence_score") or 0.0, reverse=True
+        )
+        paginated = sorted_records[offset : offset + limit]
+
+        items = [
+            EntityListItem(
+                id=r["id"],
+                name=r["name"],
+                type=r["type"].lower(),
+                confidence_score=r.get("confidence_score") or 0.0,
+                source_count=r.get("source_count") or 0,
+                evidence_strength=(
+                    "corroborated"
+                    if (r.get("source_count") or 0) >= 2
+                    else "single_source"
+                    if (r.get("source_count") or 0) == 1
+                    else "none"
+                ),
+            )
+            for r in paginated
+        ]
+
+        return EntityListResponse(
+            items=items,
+            total=summary.total,
+            summary=summary,
+        )
 
     async def get_entity_detail(
         self, investigation_id: uuid.UUID, entity_id: str
@@ -101,6 +168,29 @@ class EntityQueryService:
 # ---------------------------------------------------------------------------
 # Neo4j read transaction helpers
 # ---------------------------------------------------------------------------
+
+async def _fetch_entity_list(tx, investigation_id: str, entity_type: str | None):
+    """Fetch all entities for an investigation with source counts."""
+    if entity_type:
+        label = entity_type.capitalize()
+        query = (
+            f"MATCH (e:{label} {{investigation_id: $investigation_id}}) "
+            "OPTIONAL MATCH (e)-[m:MENTIONED_IN]->(d:Document) "
+            "WITH e, labels(e)[0] AS type, e.confidence_score AS confidence_score, "
+            "COUNT(DISTINCT d) AS source_count "
+            "RETURN e.id AS id, e.name AS name, type, confidence_score, source_count"
+        )
+    else:
+        query = (
+            "MATCH (e:Person|Organization|Location {investigation_id: $investigation_id}) "
+            "OPTIONAL MATCH (e)-[m:MENTIONED_IN]->(d:Document) "
+            "WITH e, labels(e)[0] AS type, e.confidence_score AS confidence_score, "
+            "COUNT(DISTINCT d) AS source_count "
+            "RETURN e.id AS id, e.name AS name, type, confidence_score, source_count"
+        )
+    result = await tx.run(query, investigation_id=investigation_id)
+    return await result.data()
+
 
 async def _fetch_entity(tx, entity_id: str, investigation_id: str):
     """Fetch a single entity node by id and investigation_id."""

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Eye, FileText, Trash2 } from "lucide-react";
+import { AlertTriangle, Eye, FileText, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteDocumentDialog } from "./DeleteDocumentDialog";
@@ -31,6 +31,12 @@ const statusLabels: Record<string, string> = {
   extracting_text: "Extracting Text",
   complete: "Complete",
   failed: "Failed",
+};
+
+const qualityStyles: Record<string, string> = {
+  high: "bg-[var(--status-success)]/15 text-[var(--status-success)] border-[var(--status-success)]/30",
+  medium: "bg-[var(--status-warning)]/15 text-[var(--status-warning)] border-[var(--status-warning)]/30 border-dashed",
+  low: "bg-[var(--status-warning)]/15 text-[var(--status-warning)] border-[var(--status-warning)]/30 border-dotted",
 };
 
 interface DocumentCardProps {
@@ -69,6 +75,12 @@ export function DocumentCard({
                 </span>
               </>
             )}
+            {document.entity_count != null && (
+              <>
+                <span>&middot;</span>
+                <span>{document.entity_count} entities</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -78,6 +90,16 @@ export function DocumentCard({
         >
           {statusLabels[document.status] ?? document.status.charAt(0).toUpperCase() + document.status.slice(1)}
         </Badge>
+
+        {document.extraction_quality && (
+          <Badge
+            variant="outline"
+            className={qualityStyles[document.extraction_quality] ?? ""}
+          >
+            {document.extraction_quality === "low" && <AlertTriangle className="size-3 mr-1" />}
+            {document.extraction_quality.charAt(0).toUpperCase() + document.extraction_quality.slice(1)} confidence
+          </Badge>
+        )}
 
         {document.status === "complete" && (
           <Button

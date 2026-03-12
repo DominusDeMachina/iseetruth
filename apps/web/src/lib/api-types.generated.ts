@@ -130,6 +130,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/investigations/{investigation_id}/entities/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Entities
+         * @description Return paginated entity list with confidence scores and summary counts.
+         */
+        get: operations["list_entities_api_v1_investigations__investigation_id__entities__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/investigations/{investigation_id}/entities/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Entity Detail
+         * @description Return entity detail with relationships and provenance sources.
+         */
+        get: operations["get_entity_detail_api_v1_investigations__investigation_id__entities__entity_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -168,6 +208,10 @@ export interface components {
             status: string;
             /** Page Count */
             page_count: number | null;
+            /** Entity Count */
+            entity_count?: number | null;
+            /** Extraction Confidence */
+            extraction_confidence?: number | null;
             /** Extracted Text */
             extracted_text?: string | null;
             /** Error Message */
@@ -182,6 +226,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Extraction Quality */
+            readonly extraction_quality: string | null;
         };
         /** DocumentTextResponse */
         DocumentTextResponse: {
@@ -198,6 +244,87 @@ export interface components {
             extracted_text: string | null;
             /** Status */
             status: string;
+        };
+        /** EntityDetailResponse */
+        EntityDetailResponse: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            /** Confidence Score */
+            confidence_score: number;
+            /** Investigation Id */
+            investigation_id: string;
+            /** Relationships */
+            relationships: components["schemas"]["EntityRelationship"][];
+            /** Sources */
+            sources: components["schemas"]["EntitySource"][];
+            /** Evidence Strength */
+            evidence_strength: string;
+        };
+        /** EntityListItem */
+        EntityListItem: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            /** Confidence Score */
+            confidence_score: number;
+            /** Source Count */
+            source_count: number;
+            /** Evidence Strength */
+            evidence_strength: string;
+        };
+        /** EntityListResponse */
+        EntityListResponse: {
+            /** Items */
+            items: components["schemas"]["EntityListItem"][];
+            /** Total */
+            total: number;
+            summary: components["schemas"]["EntityTypeSummary"];
+        };
+        /** EntityRelationship */
+        EntityRelationship: {
+            /** Relation Type */
+            relation_type: string;
+            /** Target Id */
+            target_id: string | null;
+            /** Target Name */
+            target_name: string | null;
+            /** Target Type */
+            target_type: string | null;
+            /** Confidence Score */
+            confidence_score: number;
+        };
+        /** EntitySource */
+        EntitySource: {
+            /** Document Id */
+            document_id: string;
+            /** Document Filename */
+            document_filename: string;
+            /** Chunk Id */
+            chunk_id: string;
+            /** Page Start */
+            page_start: number;
+            /** Page End */
+            page_end: number;
+            /** Text Excerpt */
+            text_excerpt: string;
+        };
+        /** EntityTypeSummary */
+        EntityTypeSummary: {
+            /** People */
+            people: number;
+            /** Organizations */
+            organizations: number;
+            /** Locations */
+            locations: number;
+            /** Total */
+            total: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -661,6 +788,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_entities_api_v1_investigations__investigation_id__entities__get: {
+        parameters: {
+            query?: {
+                type?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                investigation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_entity_detail_api_v1_investigations__investigation_id__entities__entity_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                investigation_id: string;
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityDetailResponse"];
                 };
             };
             /** @description Validation Error */

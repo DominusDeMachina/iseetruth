@@ -62,7 +62,7 @@ development_status:
   3-2-entity-relationship-extraction-via-local-llm: done
   3-3-provenance-chain-evidence-storage: done
   3-4-vector-embedding-generation-storage: done
-  3-5-document-level-entity-level-confidence-display: backlog
+  3-5-document-level-entity-level-confidence-display: done
   epic-3-retrospective: optional
 
   # Epic 4: Graph Visualization & Exploration

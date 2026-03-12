@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 
 
 class DocumentResponse(BaseModel):
@@ -12,8 +12,22 @@ class DocumentResponse(BaseModel):
     sha256_checksum: str
     status: str
     page_count: int | None
+    entity_count: int | None = None
+    extraction_confidence: float | None = None
     extracted_text: str | None = None
     error_message: str | None = None
+
+    @computed_field
+    @property
+    def extraction_quality(self) -> str | None:
+        if self.extraction_confidence is None:
+            return None
+        if self.extraction_confidence >= 0.7:
+            return "high"
+        if self.extraction_confidence >= 0.4:
+            return "medium"
+        return "low"
+
     created_at: datetime
     updated_at: datetime
 

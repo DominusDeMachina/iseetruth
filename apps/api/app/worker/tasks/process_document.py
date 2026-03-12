@@ -219,11 +219,16 @@ def process_document_task(document_id: str, investigation_id: str) -> None:
                     on_entity_discovered=on_entity_discovered,
                 )
 
+                document.entity_count = summary.entity_count
+                document.extraction_confidence = summary.average_confidence
+                session.commit()
+
                 logger.info(
                     "Entity extraction complete",
                     document_id=document_id,
                     entity_count=summary.entity_count,
                     relationship_count=summary.relationship_count,
+                    average_confidence=summary.average_confidence,
                 )
 
             except Exception as exc:
@@ -299,6 +304,7 @@ def process_document_task(document_id: str, investigation_id: str) -> None:
                         "entity_count": summary.entity_count,
                         "relationship_count": summary.relationship_count,
                         "embedded_count": emb_summary.embedded_count,
+                        "extraction_confidence": summary.average_confidence,
                     },
                 )
 

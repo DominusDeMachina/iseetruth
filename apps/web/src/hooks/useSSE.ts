@@ -4,13 +4,23 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { DocumentListResponse } from "@/hooks/useDocuments";
 
 interface SSEEvent {
-  type: "document.processing" | "document.complete" | "document.failed";
+  type:
+    | "document.processing"
+    | "document.complete"
+    | "document.failed"
+    | "entity.discovered";
   investigation_id: string;
   timestamp: string;
   payload: {
     document_id: string;
     stage?: string;
     error?: string;
+    entity_count?: number;
+    relationship_count?: number;
+    embedded_count?: number;
+    extraction_confidence?: number;
+    entity_type?: string;
+    entity_name?: string;
   };
 }
 
@@ -67,6 +77,15 @@ export function useSSE(
           };
         },
       );
+
+      if (event.type === "document.complete") {
+        queryClient.invalidateQueries({
+          queryKey: ["documents", investigationId],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ["entities", investigationId],
+        });
+      }
     },
     [queryClient, investigationId],
   );

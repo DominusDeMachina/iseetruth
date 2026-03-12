@@ -26,6 +26,7 @@ class ExtractionSummary:
     entity_count: int
     relationship_count: int
     chunk_count: int
+    average_confidence: float = 0.0
 
 
 class EntityExtractionService:
@@ -41,6 +42,7 @@ class EntityExtractionService:
     ) -> ExtractionSummary:
         """Extract entities and relationships from all chunks, storing results in Neo4j."""
         seen_entities: set[tuple[str, str]] = set()
+        entity_confidences: dict[tuple[str, str], float] = {}
         total_relationship_count = 0
 
         for chunk in chunks:
@@ -50,6 +52,8 @@ class EntityExtractionService:
 
             for entity in entities:
                 key = (entity.name, entity.type.value)
+                existing = entity_confidences.get(key, 0.0)
+                entity_confidences[key] = max(existing, entity.confidence)
                 if key not in seen_entities:
                     seen_entities.add(key)
                     if on_entity_discovered is not None:
@@ -57,10 +61,17 @@ class EntityExtractionService:
 
             total_relationship_count += len(relationships)
 
+        avg_confidence = (
+            (sum(entity_confidences.values()) / len(entity_confidences))
+            if entity_confidences
+            else 0.0
+        )
+
         return ExtractionSummary(
             entity_count=len(seen_entities),
             relationship_count=total_relationship_count,
             chunk_count=len(chunks),
+            average_confidence=avg_confidence,
         )
 
     def _extract_entities(self, chunk) -> list[ExtractedEntity]:

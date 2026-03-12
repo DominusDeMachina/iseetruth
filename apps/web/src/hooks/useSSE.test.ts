@@ -100,6 +100,7 @@ describe("useSSE", () => {
           page_count: null,
           extracted_text: null,
           error_message: null,
+          extraction_quality: null,
           created_at: "2026-01-01T00:00:00Z",
           updated_at: "2026-01-01T00:00:00Z",
         },
@@ -149,6 +150,7 @@ describe("useSSE", () => {
           page_count: null,
           extracted_text: null,
           error_message: null,
+          extraction_quality: null,
           created_at: "2026-01-01T00:00:00Z",
           updated_at: "2026-01-01T00:00:00Z",
         },
@@ -198,6 +200,7 @@ describe("useSSE", () => {
           page_count: null,
           extracted_text: null,
           error_message: null,
+          extraction_quality: null,
           created_at: "2026-01-01T00:00:00Z",
           updated_at: "2026-01-01T00:00:00Z",
         },
@@ -230,6 +233,55 @@ describe("useSSE", () => {
       ]);
       expect(cached?.items[0].status).toBe("failed");
       expect(cached?.items[0].error_message).toBe("OCR engine timeout");
+    });
+  });
+
+  it("invalidates entities cache on document.complete event", async () => {
+    const { wrapper, queryClient } = createWrapper();
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    const initialData: DocumentListResponse = {
+      items: [
+        {
+          id: "doc-1",
+          investigation_id: investigationId,
+          filename: "test.pdf",
+          size_bytes: 1000,
+          sha256_checksum: "abc",
+          status: "extracting_text",
+          page_count: null,
+          extracted_text: null,
+          error_message: null,
+          extraction_quality: null,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+      total: 1,
+    };
+    queryClient.setQueryData(["documents", investigationId], initialData);
+
+    mockFetchEventSource.mockImplementation(
+      async (_url: string, opts: Record<string, unknown>) => {
+        const onmessage = opts.onmessage as (ev: { data: string }) => void;
+        onmessage({
+          data: JSON.stringify({
+            type: "document.complete",
+            investigation_id: investigationId,
+            timestamp: "2026-01-01T00:00:02Z",
+            payload: { document_id: "doc-1" },
+          }),
+        });
+        return new Promise(() => {});
+      },
+    );
+
+    renderHook(() => useSSE(investigationId, true), { wrapper });
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["entities", investigationId],
+      });
     });
   });
 
