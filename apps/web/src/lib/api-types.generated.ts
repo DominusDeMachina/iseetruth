@@ -170,6 +170,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/investigations/{investigation_id}/graph/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Subgraph */
+        get: operations["get_subgraph_api_v1_investigations__investigation_id__graph__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/investigations/{investigation_id}/graph/neighbors/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Neighbors */
+        get: operations["get_neighbors_api_v1_investigations__investigation_id__graph_neighbors__entity_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -325,6 +359,61 @@ export interface components {
             locations: number;
             /** Total */
             total: number;
+        };
+        /** GraphEdge */
+        GraphEdge: {
+            /**
+             * Group
+             * @constant
+             */
+            group: "edges";
+            data: components["schemas"]["GraphEdgeData"];
+        };
+        /** GraphEdgeData */
+        GraphEdgeData: {
+            /** Id */
+            id: string;
+            /** Source */
+            source: string;
+            /** Target */
+            target: string;
+            /** Type */
+            type: string;
+            /** Confidence Score */
+            confidence_score: number;
+        };
+        /** GraphNode */
+        GraphNode: {
+            /**
+             * Group
+             * @constant
+             */
+            group: "nodes";
+            data: components["schemas"]["GraphNodeData"];
+        };
+        /** GraphNodeData */
+        GraphNodeData: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            /** Confidence Score */
+            confidence_score: number;
+            /** Relationship Count */
+            relationship_count: number;
+        };
+        /** GraphResponse */
+        GraphResponse: {
+            /** Nodes */
+            nodes: components["schemas"]["GraphNode"][];
+            /** Edges */
+            edges: components["schemas"]["GraphEdge"][];
+            /** Total Nodes */
+            total_nodes: number;
+            /** Total Edges */
+            total_edges: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -855,6 +944,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_subgraph_api_v1_investigations__investigation_id__graph__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                investigation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_neighbors_api_v1_investigations__investigation_id__graph_neighbors__entity_id__get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                investigation_id: string;
+                entity_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GraphResponse"];
                 };
             };
             /** @description Validation Error */

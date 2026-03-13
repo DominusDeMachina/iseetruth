@@ -66,8 +66,8 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: Graph Visualization & Exploration
-  epic-4: backlog
-  4-1-graph-api-subgraph-queries: backlog
+  epic-4: in-progress
+  4-1-graph-api-subgraph-queries: done
   4-2-interactive-graph-canvas-with-cytoscape-js: backlog
   4-3-node-edge-interaction-with-entity-detail-card: backlog
   4-4-graph-filtering-by-entity-type-source-document: backlog
