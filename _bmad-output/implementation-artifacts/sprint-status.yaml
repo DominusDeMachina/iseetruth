@@ -69,7 +69,7 @@ development_status:
   epic-4: in-progress
   4-1-graph-api-subgraph-queries: done
   4-2-interactive-graph-canvas-with-cytoscape-js: done
-  4-3-node-edge-interaction-with-entity-detail-card: backlog
+  4-3-node-edge-interaction-with-entity-detail-card: done
   4-4-graph-filtering-by-entity-type-source-document: backlog
   4-5-entity-search-with-graph-highlighting: backlog
   epic-4-retrospective: optional

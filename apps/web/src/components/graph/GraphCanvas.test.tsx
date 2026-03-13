@@ -24,6 +24,12 @@ const mockCy = {
   style: vi.fn(),
   width: vi.fn(() => 800),
   height: vi.fn(() => 600),
+  getElementById: vi.fn(() => ({
+    renderedPosition: vi.fn(() => ({ x: 100, y: 100 })),
+    data: vi.fn(() => "John"),
+    empty: vi.fn(() => false),
+  })),
+  animate: vi.fn(),
 };
 
 vi.mock("cytoscape", () => {
@@ -36,9 +42,21 @@ vi.mock("cytoscape-fcose", () => ({ default: vi.fn() }));
 
 // Mock useGraphData
 const mockUseGraphData = vi.fn();
+const mockExpandNeighbors = vi.fn().mockResolvedValue(null);
 vi.mock("@/hooks/useGraphData", () => ({
   useGraphData: (...args: unknown[]) => mockUseGraphData(...args),
-  useExpandNeighbors: () => ({ expandNeighbors: vi.fn() }),
+  useExpandNeighbors: () => ({ expandNeighbors: mockExpandNeighbors }),
+}));
+
+// Mock useEntityDetail for EntityDetailCard
+vi.mock("@/hooks/useEntityDetail", () => ({
+  useEntityDetail: () => ({
+    data: undefined,
+    isLoading: true,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
 }));
 
 import { GraphCanvas } from "./GraphCanvas";
@@ -51,6 +69,18 @@ function createWrapper() {
     createElement(QueryClientProvider, { client: queryClient }, children);
 }
 
+const mockGraphData = {
+  nodes: [
+    { group: "nodes", data: { id: "n1", name: "John", type: "Person", confidence_score: 0.9, relationship_count: 5 } },
+    { group: "nodes", data: { id: "n2", name: "Acme", type: "Organization", confidence_score: 0.8, relationship_count: 3 } },
+  ],
+  edges: [
+    { group: "edges", data: { id: "n1-WORKS_FOR-n2", source: "n1", target: "n2", type: "WORKS_FOR", confidence_score: 0.85 } },
+  ],
+  total_nodes: 2,
+  total_edges: 1,
+};
+
 describe("GraphCanvas", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -58,7 +88,7 @@ describe("GraphCanvas", () => {
 
   it("renders a container div", () => {
     mockUseGraphData.mockReturnValue({
-      data: { nodes: [{ group: "nodes", data: { id: "n1", name: "John", type: "Person", confidence_score: 0.9, relationship_count: 5 } }], edges: [], total_nodes: 1, total_edges: 0 },
+      data: mockGraphData,
       isLoading: false,
       isError: false,
       error: null,
@@ -70,7 +100,6 @@ describe("GraphCanvas", () => {
       { wrapper: createWrapper() },
     );
 
-    // The component should render a relative container with the cytoscape div inside
     const relativeDiv = container.querySelector(".relative");
     expect(relativeDiv).toBeTruthy();
   });
@@ -130,5 +159,106 @@ describe("GraphCanvas", () => {
     const retryButton = screen.getByText("Retry");
     await userEvent.click(retryButton);
     expect(mockRefetch).toHaveBeenCalled();
+  });
+
+  it("registers node tap handler on cytoscape", () => {
+    mockUseGraphData.mockReturnValue({
+      data: mockGraphData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(createElement(GraphCanvas, { investigationId: "inv-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    // Verify cy.on was called with tap handlers
+    const tapNodeCalls = mockCy.on.mock.calls.filter(
+      (call: unknown[]) => call[0] === "tap" && call[1] === "node",
+    );
+    expect(tapNodeCalls.length).toBeGreaterThan(0);
+  });
+
+  it("registers edge tap handler on cytoscape", () => {
+    mockUseGraphData.mockReturnValue({
+      data: mockGraphData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(createElement(GraphCanvas, { investigationId: "inv-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    const tapEdgeCalls = mockCy.on.mock.calls.filter(
+      (call: unknown[]) => call[0] === "tap" && call[1] === "edge",
+    );
+    expect(tapEdgeCalls.length).toBeGreaterThan(0);
+  });
+
+  it("registers double-tap handler for neighbor expansion", () => {
+    mockUseGraphData.mockReturnValue({
+      data: mockGraphData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(createElement(GraphCanvas, { investigationId: "inv-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    const dblTapCalls = mockCy.on.mock.calls.filter(
+      (call: unknown[]) => call[0] === "dbltap" && call[1] === "node",
+    );
+    expect(dblTapCalls.length).toBeGreaterThan(0);
+  });
+
+  it("registers background tap handler to clear selection", () => {
+    mockUseGraphData.mockReturnValue({
+      data: mockGraphData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(createElement(GraphCanvas, { investigationId: "inv-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    // Background tap is cy.on('tap', handler) without a selector
+    const bgTapCalls = mockCy.on.mock.calls.filter(
+      (call: unknown[]) => call[0] === "tap" && typeof call[1] === "function",
+    );
+    expect(bgTapCalls.length).toBeGreaterThan(0);
+  });
+
+  it("registers node mouseover/mouseout for tooltip", () => {
+    mockUseGraphData.mockReturnValue({
+      data: mockGraphData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(createElement(GraphCanvas, { investigationId: "inv-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    const mouseoverCalls = mockCy.on.mock.calls.filter(
+      (call: unknown[]) => call[0] === "mouseover" && call[1] === "node",
+    );
+    const mouseoutCalls = mockCy.on.mock.calls.filter(
+      (call: unknown[]) => call[0] === "mouseout" && call[1] === "node",
+    );
+    expect(mouseoverCalls.length).toBeGreaterThan(0);
+    expect(mouseoutCalls.length).toBeGreaterThan(0);
   });
 });

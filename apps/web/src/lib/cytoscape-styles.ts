@@ -1,4 +1,5 @@
 import type cytoscape from "cytoscape";
+import { ENTITY_COLORS } from "./entity-constants";
 
 type Stylesheet = cytoscape.StylesheetCSS | cytoscape.StylesheetStyle;
 
@@ -18,13 +19,6 @@ function darkenHex(hex: string, amount: number): string {
     )
     .join("")}`;
 }
-
-// Entity type → color mapping (matches CSS vars in globals.css)
-const ENTITY_COLORS: Record<string, string> = {
-  Person: "#6b9bd2",
-  Organization: "#c4a265",
-  Location: "#7dab8f",
-};
 
 // Entity type → shape mapping
 const ENTITY_SHAPES: Record<string, string> = {
