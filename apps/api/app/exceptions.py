@@ -88,6 +88,15 @@ class EntityNotFoundError(DomainError):
         )
 
 
+class ChunkNotFoundError(DomainError):
+    def __init__(self, chunk_id: str):
+        super().__init__(
+            detail=f"No chunk found with id: {chunk_id}",
+            status_code=404,
+            error_type="chunk_not_found",
+        )
+
+
 async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,

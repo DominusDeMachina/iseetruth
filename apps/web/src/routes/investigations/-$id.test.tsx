@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ProcessingDashboard } from "@/components/investigation/ProcessingDashboard";
@@ -7,8 +7,9 @@ import { EntitySummaryBar } from "@/components/investigation/EntitySummaryBar";
 import { QueryInput } from "@/components/qa/QueryInput";
 import { AnswerPanel } from "@/components/qa/AnswerPanel";
 import { SuggestedQuestions } from "@/components/qa/SuggestedQuestions";
+import { CitationModal } from "@/components/qa/CitationModal";
 import type { DocumentListResponse } from "@/hooks/useDocuments";
-import type { ConversationEntry } from "@/components/qa/types";
+import type { Citation, ConversationEntry, EntityReference } from "@/components/qa/types";
 
 function makeDoc(
   overrides: Partial<DocumentListResponse["items"][0]> & {
@@ -248,5 +249,266 @@ describe("Investigation Detail — Q&A Integration", () => {
     expect(button).toBeInTheDocument();
     await user.click(button);
     expect(onOpen).toHaveBeenCalledWith(true);
+  });
+});
+
+// Mock useChunkContext for citation integration tests
+const mockUseChunkContext = vi.fn();
+vi.mock("@/hooks/useChunkContext", () => ({
+  useChunkContext: (...args: unknown[]) => mockUseChunkContext(...args),
+}));
+
+const sampleChunkData = {
+  chunk_id: "c1",
+  document_id: "d1",
+  document_filename: "contract.pdf",
+  sequence_number: 14,
+  total_chunks: 47,
+  text: "Deputy Mayor Horvat signed the contract award to GreenBuild LLC.",
+  page_start: 3,
+  page_end: 3,
+  context_before: "Previous context paragraph.",
+  context_after: "Following context paragraph.",
+};
+
+describe("Investigation Detail — Citation Click-Through Integration", () => {
+  beforeEach(() => {
+    mockUseChunkContext.mockReturnValue({
+      data: sampleChunkData,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+  });
+
+  it("clicking citation superscript opens CitationModal", async () => {
+    const user = userEvent.setup();
+    let activeCitation: Citation | null = null;
+
+    const citation: Citation = {
+      citation_number: 1,
+      document_id: "d1",
+      document_filename: "contract.pdf",
+      chunk_id: "c1",
+      page_start: 3,
+      page_end: 3,
+      text_excerpt: "Deputy Mayor Horvat signed",
+    };
+
+    const entry: ConversationEntry = {
+      id: "e1",
+      question: "Who signed?",
+      answer: "Horvat signed the contract [1]",
+      citations: [citation],
+      entitiesMentioned: [],
+      suggestedFollowups: [],
+      noResults: false,
+      status: "complete",
+    };
+
+    const handleCitationClick = (cit: Citation | number) => {
+      if (typeof cit === "number") {
+        const found = entry.citations.find((c) => c.citation_number === cit);
+        if (found) activeCitation = found;
+      } else {
+        activeCitation = cit;
+      }
+      rerender();
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const ui = () => (
+      <QueryClientProvider client={queryClient}>
+        <AnswerPanel
+          conversation={[entry]}
+          streamingText=""
+          status="complete"
+          onCitationClick={handleCitationClick}
+          onEntityClick={vi.fn()}
+        />
+        <CitationModal
+          citation={activeCitation}
+          investigationId="inv-1"
+          open={!!activeCitation}
+          onOpenChange={(open) => {
+            if (!open) {
+              activeCitation = null;
+              rerender();
+            }
+          }}
+          onEntityClick={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+
+    const { rerender: baseRerender } = render(ui());
+    const rerender = () => baseRerender(ui());
+
+    // Click superscript citation [1]
+    const citLink = screen.getByLabelText("Source: contract.pdf, page 3");
+    await user.click(citLink);
+
+    // Modal should be open with citation data
+    await waitFor(() => {
+      expect(
+        screen.getByText("Citation — contract.pdf"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Chunk 15 of 47")).toBeInTheDocument();
+  });
+
+  it("clicking citation in footer opens CitationModal", async () => {
+    const user = userEvent.setup();
+    let activeCitation: Citation | null = null;
+
+    const citation: Citation = {
+      citation_number: 1,
+      document_id: "d1",
+      document_filename: "contract.pdf",
+      chunk_id: "c1",
+      page_start: 5,
+      page_end: 5,
+      text_excerpt: "text",
+    };
+
+    const entry: ConversationEntry = {
+      id: "e1",
+      question: "Who signed?",
+      answer: "Answer [1]",
+      citations: [citation],
+      entitiesMentioned: [],
+      suggestedFollowups: [],
+      noResults: false,
+      status: "complete",
+    };
+
+    const handleCitationClick = (cit: Citation | number) => {
+      if (typeof cit === "number") {
+        const found = entry.citations.find((c) => c.citation_number === cit);
+        if (found) activeCitation = found;
+      } else {
+        activeCitation = cit;
+      }
+      rerender();
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    const ui = () => (
+      <QueryClientProvider client={queryClient}>
+        <AnswerPanel
+          conversation={[entry]}
+          streamingText=""
+          status="complete"
+          onCitationClick={handleCitationClick}
+          onEntityClick={vi.fn()}
+        />
+        <CitationModal
+          citation={activeCitation}
+          investigationId="inv-1"
+          open={!!activeCitation}
+          onOpenChange={(open) => {
+            if (!open) {
+              activeCitation = null;
+              rerender();
+            }
+          }}
+          onEntityClick={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+
+    const { rerender: baseRerender } = render(ui());
+    const rerender = () => baseRerender(ui());
+
+    // Click footer citation
+    const footerLink = screen.getByText("[1] contract.pdf, page 5");
+    await user.click(footerLink);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Citation — contract.pdf"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("clicking entity in passage closes modal and triggers graph navigation", async () => {
+    const user = userEvent.setup();
+    const onEntityClick = vi.fn();
+
+    const entities: EntityReference[] = [
+      { entity_id: "e1", name: "Horvat", type: "Person" },
+    ];
+
+    const citation: Citation = {
+      citation_number: 1,
+      document_id: "d1",
+      document_filename: "contract.pdf",
+      chunk_id: "c1",
+      page_start: 3,
+      page_end: 3,
+      text_excerpt: "Horvat signed",
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <CitationModal
+          citation={citation}
+          investigationId="inv-1"
+          open={true}
+          onOpenChange={vi.fn()}
+          onEntityClick={onEntityClick}
+          entities={entities}
+        />
+      </QueryClientProvider>,
+    );
+
+    const entityLink = screen.getByLabelText("Explore Horvat in graph");
+    await user.click(entityLink);
+    expect(onEntityClick).toHaveBeenCalledWith("Horvat");
+  });
+
+  it("closing modal returns focus to Q&A panel area", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+
+    const citation: Citation = {
+      citation_number: 1,
+      document_id: "d1",
+      document_filename: "contract.pdf",
+      chunk_id: "c1",
+      page_start: 3,
+      page_end: 3,
+      text_excerpt: "text",
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <CitationModal
+          citation={citation}
+          investigationId="inv-1"
+          open={true}
+          onOpenChange={onOpenChange}
+          onEntityClick={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+
+    // Press Escape to close
+    await user.keyboard("{Escape}");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

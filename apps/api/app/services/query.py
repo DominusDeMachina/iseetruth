@@ -532,12 +532,16 @@ async def _search_vectors(
 _VECTOR_RELEVANCE_THRESHOLD = 0.2
 
 
+_MAX_CITATIONS = 15
+
+
 async def _merge_results(
     graph_results: list[dict],
     vector_results: list[dict],
     db: AsyncSession,
 ) -> tuple[list[Citation], list[EntityReference], str, str]:
-    """Merge graph and vector results, deduplicate, build citations."""
+    """Merge graph and vector results, deduplicate by document+page, build citations."""
+    seen_pages: set[str] = set()
     seen_chunks: set[str] = set()
     citation_sources: list[dict] = []
     entities_seen: dict[str, EntityReference] = {}
@@ -551,10 +555,13 @@ async def _merge_results(
             if eid not in entities_seen:
                 entities_seen[eid] = EntityReference(entity_id=eid, name=name, type=etype)
 
-        # Add provenance chunks
+        # Add provenance chunks — deduplicate by (document_id, page_start) so the
+        # same page doesn't appear multiple times in the citation footer.
         for prov in record.get("provenance", []):
+            page_key = f"{prov['document_id']}:{prov.get('page_start', 0)}"
             chunk_key = f"{prov['document_id']}:{prov['chunk_id']}"
-            if chunk_key not in seen_chunks:
+            if page_key not in seen_pages:
+                seen_pages.add(page_key)
                 seen_chunks.add(chunk_key)
                 citation_sources.append(prov)
 
@@ -564,12 +571,17 @@ async def _merge_results(
         if vr.get("score", 0) >= _VECTOR_RELEVANCE_THRESHOLD
     ]
 
-    # Add vector results (deduplicate by chunk_id)
+    # Add vector results (deduplicate by document+page, fall back to chunk)
     for vr in relevant_vectors:
+        page_key = f"{vr['document_id']}:{vr.get('page_start', 0)}"
         chunk_key = f"{vr['document_id']}:{vr['chunk_id']}"
-        if chunk_key not in seen_chunks:
+        if page_key not in seen_pages and chunk_key not in seen_chunks:
+            seen_pages.add(page_key)
             seen_chunks.add(chunk_key)
             citation_sources.append(vr)
+
+    # Cap total citations to keep the footer manageable
+    citation_sources = citation_sources[:_MAX_CITATIONS]
 
     # Resolve document filenames
     doc_ids = list({cs["document_id"] for cs in citation_sources if cs.get("document_id")})

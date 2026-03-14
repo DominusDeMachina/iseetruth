@@ -110,6 +110,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/investigations/{investigation_id}/chunks/{chunk_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Chunk With Context */
+        get: operations["get_chunk_with_context_api_v1_investigations__investigation_id__chunks__chunk_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/investigations/{investigation_id}/events": {
         parameters: {
             query?: never;
@@ -234,6 +251,35 @@ export interface components {
         Body_upload_documents_api_v1_investigations__investigation_id__documents_post: {
             /** Files */
             files: string[];
+        };
+        /** ChunkWithContextResponse */
+        ChunkWithContextResponse: {
+            /**
+             * Chunk Id
+             * Format: uuid
+             */
+            chunk_id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Document Filename */
+            document_filename: string;
+            /** Sequence Number */
+            sequence_number: number;
+            /** Total Chunks */
+            total_chunks: number;
+            /** Text */
+            text: string;
+            /** Page Start */
+            page_start: number;
+            /** Page End */
+            page_end: number;
+            /** Context Before */
+            context_before: string | null;
+            /** Context After */
+            context_after: string | null;
         };
         /** ConversationTurn */
         ConversationTurn: {
@@ -885,6 +931,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentTextResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chunk_with_context_api_v1_investigations__investigation_id__chunks__chunk_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                investigation_id: string;
+                chunk_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkWithContextResponse"];
                 };
             };
             /** @description Validation Error */

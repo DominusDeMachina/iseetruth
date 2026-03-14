@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useCallback } from "react";
+import { lazy, Suspense, useState, useCallback, useRef } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, RefreshCw, FileText } from "lucide-react";
 import { useInvestigation } from "@/hooks/useInvestigations";
@@ -16,6 +16,7 @@ import { ProcessingDashboard } from "@/components/investigation/ProcessingDashbo
 import { EntitySummaryBar } from "@/components/investigation/EntitySummaryBar";
 import { SplitView } from "@/components/layout/SplitView";
 import { QAPanel } from "@/components/qa/QAPanel";
+import { CitationModal } from "@/components/qa/CitationModal";
 import {
   Dialog,
   DialogContent,
@@ -23,7 +24,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import type { Citation } from "@/components/qa/types";
+import type { Citation, ConversationEntry, EntityReference } from "@/components/qa/types";
 
 const GraphCanvas = lazy(() =>
   import("@/components/graph/GraphCanvas").then((m) => ({
@@ -46,6 +47,10 @@ function InvestigationDetail() {
   const [docsDialogOpen, setDocsDialogOpen] = useState(false);
   const [prefillQuestion, setPrefillQuestion] = useState<string | undefined>();
   const [highlightEntities, setHighlightEntities] = useState<string[]>([]);
+  const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
+  const [activeCitationEntities, setActiveCitationEntities] = useState<EntityReference[]>([]);
+  const [citationNotFound, setCitationNotFound] = useState(false);
+  const conversationRef = useRef<ConversationEntry[]>([]);
 
   const { data: entitiesData } = useEntities(id);
 
@@ -59,14 +64,58 @@ function InvestigationDetail() {
   const sseEnabled = hasProcessing || uploadMutation.isPending;
   const { isConnected, connectionError } = useSSE(id, sseEnabled);
 
+  const handleConversationUpdate = useCallback(
+    (entries: ConversationEntry[]) => {
+      conversationRef.current = entries;
+    },
+    [],
+  );
+
   const handleEntityClick = useCallback((entityName: string) => {
     setHighlightEntities([entityName]);
   }, []);
 
   const handleCitationClick = useCallback((citation: Citation | number) => {
-    // Story 5.3 will implement the Citation Modal — log for now
-    console.log("Citation clicked:", citation);
+    if (typeof citation === "number") {
+      // Resolve citation number to full Citation object from conversation entries
+      const entries = conversationRef.current;
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const found = entries[i].citations.find(
+          (c) => c.citation_number === citation,
+        );
+        if (found) {
+          setActiveCitationEntities(entries[i].entitiesMentioned);
+          setActiveCitation(found);
+          return;
+        }
+      }
+      // Citation not found — show user feedback
+      setCitationNotFound(true);
+      setTimeout(() => setCitationNotFound(false), 4000);
+    } else {
+      // Direct Citation object — find matching entry for entity context
+      const entries = conversationRef.current;
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if (entries[i].citations.some((c) => c.chunk_id === citation.chunk_id)) {
+          setActiveCitationEntities(entries[i].entitiesMentioned);
+          break;
+        }
+      }
+      setActiveCitation(citation);
+    }
   }, []);
+
+  const handleCitationEntityClick = useCallback(
+    (entityName: string) => {
+      setActiveCitation(null);
+      setActiveCitationEntities([]);
+      // Delay entity highlight to allow modal close animation
+      setTimeout(() => {
+        setHighlightEntities([entityName]);
+      }, 150);
+    },
+    [],
+  );
 
   const handleAskAboutEntity = useCallback((entityName: string) => {
     setPrefillQuestion(`What connections does ${entityName} have?`);
@@ -187,6 +236,7 @@ function InvestigationDetail() {
                 onCitationClick={handleCitationClick}
                 prefillQuestion={prefillQuestion}
                 onQueryStart={() => setHighlightEntities([])}
+                onConversationUpdate={handleConversationUpdate}
               />
             }
             right={
@@ -221,6 +271,28 @@ function InvestigationDetail() {
             {documentManagementContent}
           </DialogContent>
         </Dialog>
+
+        {/* Citation modal */}
+        <CitationModal
+          citation={activeCitation}
+          investigationId={id}
+          open={!!activeCitation}
+          onOpenChange={(open) => {
+            if (!open) {
+              setActiveCitation(null);
+              setActiveCitationEntities([]);
+            }
+          }}
+          onEntityClick={handleCitationEntityClick}
+          entities={activeCitationEntities}
+        />
+
+        {/* Citation not found notification */}
+        {citationNotFound && (
+          <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-[var(--status-error)] px-4 py-2 text-sm text-white shadow-lg">
+            Citation not found — the answer may have changed.
+          </div>
+        )}
       </div>
     );
   }

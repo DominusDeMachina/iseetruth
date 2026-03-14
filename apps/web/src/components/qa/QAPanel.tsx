@@ -1,9 +1,9 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useQueryStream } from "@/hooks/useQueryStream";
 import { QueryInput } from "./QueryInput";
 import { AnswerPanel } from "./AnswerPanel";
 import { SuggestedQuestions } from "./SuggestedQuestions";
-import type { Citation } from "./types";
+import type { Citation, ConversationEntry } from "./types";
 
 interface QAPanelProps {
   investigationId: string;
@@ -11,6 +11,7 @@ interface QAPanelProps {
   onCitationClick: (citation: Citation | number) => void;
   prefillQuestion?: string;
   onQueryStart?: () => void;
+  onConversationUpdate?: (entries: ConversationEntry[]) => void;
 }
 
 export function QAPanel({
@@ -19,6 +20,7 @@ export function QAPanel({
   onCitationClick,
   prefillQuestion,
   onQueryStart,
+  onConversationUpdate,
 }: QAPanelProps) {
   const {
     queryStatus,
@@ -26,6 +28,10 @@ export function QAPanel({
     currentStreamingText,
     submitQuery,
   } = useQueryStream(investigationId);
+
+  useEffect(() => {
+    onConversationUpdate?.(conversationEntries);
+  }, [conversationEntries, onConversationUpdate]);
 
   const handleSubmit = useCallback(
     (question: string) => {

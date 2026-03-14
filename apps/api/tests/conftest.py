@@ -241,3 +241,42 @@ def mock_pdf_file():
     upload.seek = AsyncMock()
     upload.file = file
     return upload
+
+
+# ---------------------------------------------------------------------------
+# Chunk fixtures
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def sample_chunk_id():
+    return uuid.UUID("33333333-3333-3333-3333-333333333333")
+
+
+@pytest.fixture
+def sample_chunk_context(sample_chunk_id, sample_document_id):
+    """Return a mock ChunkWithContextResponse."""
+    from app.schemas.chunk import ChunkWithContextResponse
+
+    return ChunkWithContextResponse(
+        chunk_id=sample_chunk_id,
+        document_id=sample_document_id,
+        document_filename="test-report.pdf",
+        sequence_number=5,
+        total_chunks=20,
+        text="Deputy Mayor Horvat signed the contract.",
+        page_start=3,
+        page_end=3,
+        context_before="Previous paragraph text.",
+        context_after="Next paragraph text.",
+    )
+
+
+@pytest.fixture
+def mock_chunk_service(sample_chunk_context):
+    """Mock ChunkService for API endpoint tests."""
+    with patch("app.api.v1.chunks.ChunkService") as mock_cls:
+        mock_service = AsyncMock()
+        mock_cls.return_value = mock_service
+        mock_service.get_chunk_with_context = AsyncMock(
+            return_value=sample_chunk_context
+        )
+        yield mock_service
