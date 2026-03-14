@@ -154,7 +154,7 @@ function InvestigationDetail() {
                   </div>
                 }
               >
-                <GraphCanvas investigationId={id} />
+                <GraphCanvas investigationId={id} documents={documentsData?.items} />
               </Suspense>
             }
           />

@@ -962,6 +962,8 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number;
+                entity_types?: string | null;
+                document_id?: string | null;
             };
             header?: never;
             path: {

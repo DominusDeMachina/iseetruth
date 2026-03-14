@@ -214,6 +214,100 @@ class TestGetSubgraph:
             assert call_kwargs.kwargs["offset"] == 20
 
 
+class TestGetSubgraphFilters:
+    """Tests for entity type and document filter params on GET /graph/."""
+
+    def test_entity_types_filter_passed_to_service(self, graph_client):
+        """entity_types query param is parsed and passed to service."""
+        with patch("app.api.v1.graph.GraphQueryService") as mock_svc_cls:
+            mock_svc = AsyncMock()
+            mock_svc.get_subgraph = AsyncMock(return_value=_empty_graph_response())
+            mock_svc_cls.return_value = mock_svc
+
+            graph_client.get(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/graph/?entity_types=person"
+            )
+
+            mock_svc.get_subgraph.assert_called_once()
+            call_kwargs = mock_svc.get_subgraph.call_args
+            assert call_kwargs.kwargs["entity_types"] == ["person"]
+
+    def test_multiple_entity_types_filter(self, graph_client):
+        """Comma-separated entity_types are parsed into a list."""
+        with patch("app.api.v1.graph.GraphQueryService") as mock_svc_cls:
+            mock_svc = AsyncMock()
+            mock_svc.get_subgraph = AsyncMock(return_value=_empty_graph_response())
+            mock_svc_cls.return_value = mock_svc
+
+            graph_client.get(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/graph/?entity_types=person,organization"
+            )
+
+            call_kwargs = mock_svc.get_subgraph.call_args
+            assert call_kwargs.kwargs["entity_types"] == ["person", "organization"]
+
+    def test_document_id_filter_passed_to_service(self, graph_client):
+        """document_id query param is passed to service."""
+        doc_id = "22222222-2222-2222-2222-222222222222"
+        with patch("app.api.v1.graph.GraphQueryService") as mock_svc_cls:
+            mock_svc = AsyncMock()
+            mock_svc.get_subgraph = AsyncMock(return_value=_empty_graph_response())
+            mock_svc_cls.return_value = mock_svc
+
+            graph_client.get(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/graph/?document_id={doc_id}"
+            )
+
+            call_kwargs = mock_svc.get_subgraph.call_args
+            assert call_kwargs.kwargs["document_id"] == doc_id
+
+    def test_combined_filters_passed_to_service(self, graph_client):
+        """entity_types + document_id applied simultaneously (AND logic)."""
+        doc_id = "22222222-2222-2222-2222-222222222222"
+        with patch("app.api.v1.graph.GraphQueryService") as mock_svc_cls:
+            mock_svc = AsyncMock()
+            mock_svc.get_subgraph = AsyncMock(return_value=_empty_graph_response())
+            mock_svc_cls.return_value = mock_svc
+
+            graph_client.get(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/graph/"
+                f"?entity_types=person&document_id={doc_id}"
+            )
+
+            call_kwargs = mock_svc.get_subgraph.call_args
+            assert call_kwargs.kwargs["entity_types"] == ["person"]
+            assert call_kwargs.kwargs["document_id"] == doc_id
+
+    def test_no_filters_passes_none(self, graph_client):
+        """No filter params → entity_types=None, document_id=None."""
+        with patch("app.api.v1.graph.GraphQueryService") as mock_svc_cls:
+            mock_svc = AsyncMock()
+            mock_svc.get_subgraph = AsyncMock(return_value=_empty_graph_response())
+            mock_svc_cls.return_value = mock_svc
+
+            graph_client.get(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/graph/"
+            )
+
+            call_kwargs = mock_svc.get_subgraph.call_args
+            assert call_kwargs.kwargs["entity_types"] is None
+            assert call_kwargs.kwargs["document_id"] is None
+
+    def test_invalid_entity_type_returns_422(self, graph_client):
+        """Invalid entity type returns 422."""
+        response = graph_client.get(
+            f"/api/v1/investigations/{INVESTIGATION_ID}/graph/?entity_types=invalid"
+        )
+        assert response.status_code == 422
+
+    def test_invalid_document_id_returns_422(self, graph_client):
+        """Non-UUID document_id returns 422."""
+        response = graph_client.get(
+            f"/api/v1/investigations/{INVESTIGATION_ID}/graph/?document_id=not-a-uuid"
+        )
+        assert response.status_code == 422
+
+
 class TestGetNeighbors:
     def test_returns_200_with_neighbors(self, graph_client):
         with patch("app.api.v1.graph.GraphQueryService") as mock_svc_cls:
@@ -267,3 +361,40 @@ class TestGetNeighbors:
             mock_svc.get_neighbors.assert_called_once()
             call_kwargs = mock_svc.get_neighbors.call_args
             assert call_kwargs.kwargs["limit"] == 10
+
+
+class TestBuildLabelExpr:
+    """Unit tests for _build_label_expr — critical Cypher label construction."""
+
+    def test_no_filter_returns_all_labels(self):
+        from app.services.graph_query import _build_label_expr
+
+        assert _build_label_expr(None) == "Person|Organization|Location"
+
+    def test_empty_list_returns_all_labels(self):
+        from app.services.graph_query import _build_label_expr
+
+        assert _build_label_expr([]) == "Person|Organization|Location"
+
+    def test_single_type(self):
+        from app.services.graph_query import _build_label_expr
+
+        assert _build_label_expr(["person"]) == "Person"
+
+    def test_multiple_types(self):
+        from app.services.graph_query import _build_label_expr
+
+        result = _build_label_expr(["person", "organization"])
+        assert result == "Person|Organization"
+
+    def test_all_types(self):
+        from app.services.graph_query import _build_label_expr
+
+        result = _build_label_expr(["person", "organization", "location"])
+        assert result == "Person|Organization|Location"
+
+    def test_case_insensitive_mapping(self):
+        from app.services.graph_query import _build_label_expr
+
+        assert _build_label_expr(["Person"]) == "Person"
+        assert _build_label_expr(["ORGANIZATION"]) == "Organization"

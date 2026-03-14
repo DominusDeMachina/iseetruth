@@ -1,38 +1,64 @@
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useRef, useEffect, useCallback, useState, useMemo } from "react";
 import { RefreshCw } from "lucide-react";
 import { useCytoscape } from "@/hooks/useCytoscape";
-import { useGraphData, useExpandNeighbors } from "@/hooks/useGraphData";
+import {
+  useGraphData,
+  useExpandNeighbors,
+  type GraphFilters,
+} from "@/hooks/useGraphData";
+import type { DocumentResponse } from "@/hooks/useDocuments";
 import { cytoscapeStylesheet } from "@/lib/cytoscape-styles";
 import { GraphControls } from "./GraphControls";
+import { GraphFilterPanel } from "./GraphFilterPanel";
 import { EntityDetailCard } from "./EntityDetailCard";
 import { EdgeDetailPopover } from "./EdgeDetailPopover";
 
 interface GraphCanvasProps {
   investigationId: string;
+  documents?: DocumentResponse[];
 }
 
-function buildFcoseOptions(reducedMotion: boolean): cytoscape.LayoutOptions {
+function buildFcoseOptions(
+  reducedMotion: boolean,
+  overrides?: { animationDuration?: number },
+): cytoscape.LayoutOptions {
   return {
     name: "fcose",
     animate: !reducedMotion,
-    animationDuration: reducedMotion ? 0 : 400,
+    animationDuration: reducedMotion
+      ? 0
+      : (overrides?.animationDuration ?? 400),
     quality: "default",
     randomize: false,
     nodeSeparation: 75,
   } as unknown as cytoscape.LayoutOptions;
 }
 
-export function GraphCanvas({ investigationId }: GraphCanvasProps) {
+export function GraphCanvas({ investigationId, documents }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { cy, isReady, error: cyError, reducedMotion } = useCytoscape(containerRef);
+
+  // Filter state
+  const [entityTypes, setEntityTypes] = useState<string[]>([]);
+  const [documentId, setDocumentId] = useState<string | undefined>();
+  const [filtersCollapsed, setFiltersCollapsed] = useState(true);
+
+  const filters: GraphFilters = useMemo(
+    () => ({
+      entityTypes: entityTypes.length > 0 ? entityTypes : undefined,
+      documentId,
+    }),
+    [entityTypes, documentId],
+  );
+
   const {
     data,
     isLoading,
     isError,
     error: dataError,
     refetch,
-  } = useGraphData(investigationId);
-  const { expandNeighbors } = useExpandNeighbors(investigationId);
+  } = useGraphData(investigationId, filters);
+  const { expandNeighbors } = useExpandNeighbors(investigationId, filters);
 
   // Selection state for detail cards
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -61,29 +87,63 @@ export function GraphCanvas({ investigationId }: GraphCanvasProps) {
     setSelectedEdgeData(null);
   }, []);
 
+  // Close detail card when filter change removes the selected node or edge
+  useEffect(() => {
+    if (!data) return;
+    if (selectedNodeId) {
+      const nodeStillVisible = data.nodes?.some(
+        (n) => n.data.id === selectedNodeId,
+      );
+      if (!nodeStillVisible) {
+        clearSelection();
+        return;
+      }
+    }
+    if (selectedEdgeId) {
+      const edgeStillVisible = data.edges?.some(
+        (e) => e.data.id === selectedEdgeId,
+      );
+      if (!edgeStillVisible) {
+        clearSelection();
+      }
+    }
+  }, [data, selectedNodeId, selectedEdgeId, clearSelection]);
+
   // Apply stylesheet once Cytoscape is ready
   useEffect(() => {
     if (!cy || !isReady) return;
     cy.style(cytoscapeStylesheet);
   }, [cy, isReady]);
 
-  // Sync data into Cytoscape when data changes
+  // Sync data into Cytoscape when data changes (including filter changes)
   useEffect(() => {
     if (!cy || !isReady || !data) return;
 
     const incoming = [...(data.nodes ?? []), ...(data.edges ?? [])];
-    if (incoming.length === 0) return;
-
-    // Compute diff to avoid re-adding existing elements
+    const incomingIds = new Set(incoming.map((el) => el.data.id));
     const existingIds = new Set(cy.elements().map((ele) => ele.id()));
-    const toAdd = incoming.filter(
-      (el) => !existingIds.has(el.data.id),
-    );
 
+    const toAdd = incoming.filter((el) => !existingIds.has(el.data.id));
+    const toRemove = cy.elements().filter((ele) => !incomingIds.has(ele.id()));
+
+    if (toAdd.length === 0 && toRemove.length === 0) return;
+
+    cy.startBatch();
+    if (toRemove.length > 0) {
+      cy.remove(toRemove);
+    }
     if (toAdd.length > 0) {
       cy.add(toAdd);
-      cy.layout(buildFcoseOptions(reducedMotion)).run();
     }
+    cy.endBatch();
+
+    // Use faster animation for filter transitions (200ms) vs initial/expansion (400ms)
+    const isFilterTransition = toRemove.length > 0;
+    cy.layout(
+      buildFcoseOptions(reducedMotion, {
+        animationDuration: isFilterTransition ? 200 : 400,
+      }),
+    ).run();
   }, [cy, isReady, data, reducedMotion]);
 
   // Edge hover label toggle
@@ -261,11 +321,20 @@ export function GraphCanvas({ investigationId }: GraphCanvasProps) {
     cy.layout(buildFcoseOptions(reducedMotion)).run();
   }, [cy, reducedMotion]);
 
+  // Only pass completed documents to filter panel
+  const completedDocuments = (documents ?? []).filter(
+    (d) => d.status === "complete",
+  );
+
   const hasElements =
     data && ((data.nodes?.length ?? 0) > 0 || (data.edges?.length ?? 0) > 0);
+  const hasActiveFilters =
+    (entityTypes.length > 0) || !!documentId;
 
   // Determine which overlay to show (if any) on top of the always-rendered container
   let overlay: React.ReactNode = null;
+  // Whether to show filters even when overlay is active (empty filtered results)
+  let showFiltersWithOverlay = false;
   if (cyError) {
     overlay = (
       <p className="text-[var(--text-secondary)]">
@@ -300,6 +369,14 @@ export function GraphCanvas({ investigationId }: GraphCanvasProps) {
         )}
       </div>
     );
+  } else if (!hasElements && hasActiveFilters) {
+    // Filters are active but no results — keep filter panel visible
+    overlay = (
+      <p className="text-sm text-[var(--text-secondary)]">
+        No entities match the current filters.
+      </p>
+    );
+    showFiltersWithOverlay = true;
   } else if (!hasElements) {
     overlay = (
       <p className="text-sm text-[var(--text-secondary)]">
@@ -307,6 +384,8 @@ export function GraphCanvas({ investigationId }: GraphCanvasProps) {
       </p>
     );
   }
+
+  const showFilters = cy && (!overlay || showFiltersWithOverlay);
 
   return (
     <div className="relative h-full w-full">
@@ -317,6 +396,20 @@ export function GraphCanvas({ investigationId }: GraphCanvasProps) {
           {overlay}
         </div>
       )}
+
+      {/* Filter panel — visible even when filtered results are empty */}
+      {showFilters && (
+        <GraphFilterPanel
+          entityTypes={entityTypes}
+          onEntityTypesChange={setEntityTypes}
+          documentId={documentId}
+          onDocumentIdChange={setDocumentId}
+          documents={completedDocuments}
+          isCollapsed={filtersCollapsed}
+          onToggleCollapse={() => setFiltersCollapsed((prev) => !prev)}
+        />
+      )}
+
       {cy && !overlay && (
         <GraphControls cy={cy} onRelayout={handleRelayout} />
       )}

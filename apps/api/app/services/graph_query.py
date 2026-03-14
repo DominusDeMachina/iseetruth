@@ -14,19 +14,24 @@ class GraphQueryService:
         self.neo4j_driver = neo4j_driver
 
     async def get_subgraph(
-        self, investigation_id: uuid.UUID, limit: int = 50, offset: int = 0
+        self,
+        investigation_id: uuid.UUID,
+        limit: int = 50,
+        offset: int = 0,
+        entity_types: list[str] | None = None,
+        document_id: str | None = None,
     ) -> GraphResponse:
         """Return hub nodes ordered by relationship_count DESC and edges between them."""
         inv_id_str = str(investigation_id)
 
         async with self.neo4j_driver.session() as session:
             hub_records = await session.execute_read(
-                _fetch_hub_nodes, inv_id_str, limit, offset
+                _fetch_hub_nodes, inv_id_str, limit, offset, entity_types, document_id
             )
 
             if not hub_records:
                 total_counts = await session.execute_read(
-                    _fetch_total_counts, inv_id_str
+                    _fetch_total_counts, inv_id_str, entity_types, document_id
                 )
                 return GraphResponse(
                     nodes=[],
@@ -41,7 +46,7 @@ class GraphQueryService:
                 _fetch_edges_between, inv_id_str, node_ids
             )
             total_counts = await session.execute_read(
-                _fetch_total_counts, inv_id_str
+                _fetch_total_counts, inv_id_str, entity_types, document_id
             )
 
         nodes = [
@@ -184,21 +189,62 @@ class GraphQueryService:
 # ---------------------------------------------------------------------------
 
 
-async def _fetch_hub_nodes(tx, investigation_id: str, limit: int, offset: int):
+def _build_label_expr(entity_types: list[str] | None) -> str:
+    """Build a Neo4j label expression from entity types.
+
+    Maps lowercase API types to PascalCase Neo4j labels.
+    Returns 'Person|Organization|Location' when no filter is applied.
+    """
+    type_map = {"person": "Person", "organization": "Organization", "location": "Location"}
+    if not entity_types:
+        return "Person|Organization|Location"
+    return "|".join(type_map[t.lower()] for t in entity_types)
+
+
+async def _fetch_hub_nodes(
+    tx,
+    investigation_id: str,
+    limit: int,
+    offset: int,
+    entity_types: list[str] | None = None,
+    document_id: str | None = None,
+):
     """Fetch entity nodes ordered by relationship count (hub detection)."""
-    result = await tx.run(
-        "MATCH (e:Person|Organization|Location {investigation_id: $investigation_id}) "
-        "OPTIONAL MATCH (e)-[r:WORKS_FOR|KNOWS|LOCATED_AT]-"
-        "({investigation_id: $investigation_id}) "
-        "WITH e, labels(e)[0] AS type, COUNT(r) AS relationship_count "
-        "ORDER BY relationship_count DESC "
-        "SKIP $offset LIMIT $limit "
-        "RETURN e.id AS id, e.name AS name, type, "
-        "e.confidence_score AS confidence_score, relationship_count",
-        investigation_id=investigation_id,
-        offset=offset,
-        limit=limit,
-    )
+    label_expr = _build_label_expr(entity_types)
+    params: dict = {
+        "investigation_id": investigation_id,
+        "offset": offset,
+        "limit": limit,
+    }
+
+    if document_id:
+        # Filter by document via MENTIONED_IN relationship
+        params["document_id"] = document_id
+        query = (
+            f"MATCH (e:{label_expr} {{investigation_id: $investigation_id}})"
+            "-[:MENTIONED_IN]->(d:Document {id: $document_id, investigation_id: $investigation_id}) "
+            "WITH DISTINCT e "
+            "OPTIONAL MATCH (e)-[r:WORKS_FOR|KNOWS|LOCATED_AT]-"
+            "({investigation_id: $investigation_id}) "
+            "WITH e, labels(e)[0] AS type, COUNT(r) AS relationship_count "
+            "ORDER BY relationship_count DESC "
+            "SKIP $offset LIMIT $limit "
+            "RETURN e.id AS id, e.name AS name, type, "
+            "e.confidence_score AS confidence_score, relationship_count"
+        )
+    else:
+        query = (
+            f"MATCH (e:{label_expr} {{investigation_id: $investigation_id}}) "
+            "OPTIONAL MATCH (e)-[r:WORKS_FOR|KNOWS|LOCATED_AT]-"
+            "({investigation_id: $investigation_id}) "
+            "WITH e, labels(e)[0] AS type, COUNT(r) AS relationship_count "
+            "ORDER BY relationship_count DESC "
+            "SKIP $offset LIMIT $limit "
+            "RETURN e.id AS id, e.name AS name, type, "
+            "e.confidence_score AS confidence_score, relationship_count"
+        )
+
+    result = await tx.run(query, **params)
     return await result.data()
 
 
@@ -217,15 +263,35 @@ async def _fetch_edges_between(tx, investigation_id: str, node_ids: list[str]):
     return await result.data()
 
 
-async def _fetch_total_counts(tx, investigation_id: str):
-    """Fetch total node and edge counts for an investigation."""
-    result = await tx.run(
-        "MATCH (e:Person|Organization|Location {investigation_id: $investigation_id}) "
-        "OPTIONAL MATCH (e)-[r:WORKS_FOR|KNOWS|LOCATED_AT]-"
-        "({investigation_id: $investigation_id}) "
-        "RETURN COUNT(DISTINCT e) AS total_nodes, COUNT(DISTINCT r) AS total_edges",
-        investigation_id=investigation_id,
-    )
+async def _fetch_total_counts(
+    tx,
+    investigation_id: str,
+    entity_types: list[str] | None = None,
+    document_id: str | None = None,
+):
+    """Fetch total node and edge counts for an investigation (with optional filters)."""
+    label_expr = _build_label_expr(entity_types)
+    params: dict = {"investigation_id": investigation_id}
+
+    if document_id:
+        params["document_id"] = document_id
+        query = (
+            f"MATCH (e:{label_expr} {{investigation_id: $investigation_id}})"
+            "-[:MENTIONED_IN]->(d:Document {id: $document_id, investigation_id: $investigation_id}) "
+            "WITH DISTINCT e "
+            "OPTIONAL MATCH (e)-[r:WORKS_FOR|KNOWS|LOCATED_AT]-"
+            "({investigation_id: $investigation_id}) "
+            "RETURN COUNT(DISTINCT e) AS total_nodes, COUNT(DISTINCT r) AS total_edges"
+        )
+    else:
+        query = (
+            f"MATCH (e:{label_expr} {{investigation_id: $investigation_id}}) "
+            "OPTIONAL MATCH (e)-[r:WORKS_FOR|KNOWS|LOCATED_AT]-"
+            "({investigation_id: $investigation_id}) "
+            "RETURN COUNT(DISTINCT e) AS total_nodes, COUNT(DISTINCT r) AS total_edges"
+        )
+
+    result = await tx.run(query, **params)
     record = await result.single()
     if record is None:
         return {"total_nodes": 0, "total_edges": 0}

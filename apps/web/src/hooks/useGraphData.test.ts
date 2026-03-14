@@ -8,7 +8,7 @@ vi.mock("@/lib/api-client", () => ({
   api: { GET: (...args: unknown[]) => mockGet(...args) },
 }));
 
-import { useGraphData, useExpandNeighbors } from "./useGraphData";
+import { useGraphData, useExpandNeighbors, type GraphFilters } from "./useGraphData";
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -130,15 +130,113 @@ describe("useGraphData", () => {
   });
 });
 
+describe("useGraphData with filters", () => {
+  beforeEach(() => {
+    mockGet.mockReset();
+  });
+
+  it("includes entity_types filter in API call when provided", async () => {
+    mockGet.mockResolvedValue({ data: mockGraphResponse, error: undefined });
+
+    const { wrapper } = createWrapper();
+    const filters: GraphFilters = { entityTypes: ["person", "organization"] };
+    const { result } = renderHook(() => useGraphData("inv-1", filters), {
+      wrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockGet).toHaveBeenCalledWith(
+      "/api/v1/investigations/{investigation_id}/graph/",
+      {
+        params: {
+          path: { investigation_id: "inv-1" },
+          query: { limit: 50, entity_types: "person,organization" },
+        },
+      },
+    );
+  });
+
+  it("includes document_id filter in API call when provided", async () => {
+    mockGet.mockResolvedValue({ data: mockGraphResponse, error: undefined });
+
+    const { wrapper } = createWrapper();
+    const filters: GraphFilters = { documentId: "doc-123" };
+    const { result } = renderHook(() => useGraphData("inv-1", filters), {
+      wrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockGet).toHaveBeenCalledWith(
+      "/api/v1/investigations/{investigation_id}/graph/",
+      {
+        params: {
+          path: { investigation_id: "inv-1" },
+          query: { limit: 50, document_id: "doc-123" },
+        },
+      },
+    );
+  });
+
+  it("omits filter params when filters are undefined", async () => {
+    mockGet.mockResolvedValue({ data: mockGraphResponse, error: undefined });
+
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useGraphData("inv-1"), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockGet).toHaveBeenCalledWith(
+      "/api/v1/investigations/{investigation_id}/graph/",
+      {
+        params: {
+          path: { investigation_id: "inv-1" },
+          query: { limit: 50 },
+        },
+      },
+    );
+  });
+
+  it("includes filters in query key for cache separation", async () => {
+    mockGet.mockResolvedValue({ data: mockGraphResponse, error: undefined });
+
+    const { queryClient, wrapper } = createWrapper();
+    const filters: GraphFilters = { entityTypes: ["person"] };
+    const { result } = renderHook(() => useGraphData("inv-1", filters), {
+      wrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    // Cache entry should use filter-aware key
+    const cached = queryClient.getQueryData([
+      "graph",
+      "inv-1",
+      ["person"],
+      undefined,
+    ]);
+    expect(cached).toEqual(mockGraphResponse);
+  });
+});
+
 describe("useExpandNeighbors", () => {
   beforeEach(() => {
     mockGet.mockReset();
   });
 
   it("merges new neighbors into cached graph data without duplicates", async () => {
-    // Seed the cache with initial graph data
+    // Seed the cache with initial graph data (cache key includes filter slots)
     const { queryClient, wrapper } = createWrapper();
-    queryClient.setQueryData(["graph", "inv-1"], mockGraphResponse);
+    queryClient.setQueryData(["graph", "inv-1", undefined, undefined], mockGraphResponse);
 
     const neighborResponse = {
       nodes: [
@@ -205,6 +303,8 @@ describe("useExpandNeighbors", () => {
     const updated = queryClient.getQueryData<typeof mockGraphResponse>([
       "graph",
       "inv-1",
+      undefined,
+      undefined,
     ]);
     // Should have 3 nodes (2 original + 1 new), not 4
     expect(updated?.nodes).toHaveLength(3);

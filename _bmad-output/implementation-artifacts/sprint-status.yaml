@@ -48,7 +48,7 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2: Investigation & Document Management
-  epic-2: in-progress
+  epic-2: done
   2-1-investigation-crud-api-list-view: done
   2-2-pdf-upload-with-immutable-storage: done
   2-3-async-document-processing-pipeline-with-text-extraction: done
@@ -57,7 +57,7 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: Entity Extraction & Knowledge Graph Construction
-  epic-3: in-progress
+  epic-3: done
   3-1-document-chunking-llm-integration-layer: done
   3-2-entity-relationship-extraction-via-local-llm: done
   3-3-provenance-chain-evidence-storage: done
@@ -70,7 +70,7 @@ development_status:
   4-1-graph-api-subgraph-queries: done
   4-2-interactive-graph-canvas-with-cytoscape-js: done
   4-3-node-edge-interaction-with-entity-detail-card: done
-  4-4-graph-filtering-by-entity-type-source-document: backlog
+  4-4-graph-filtering-by-entity-type-source-document: done
   4-5-entity-search-with-graph-highlighting: backlog
   epic-4-retrospective: optional
 

@@ -16,10 +16,14 @@ const mockCy = {
   fit: vi.fn(),
   zoom: vi.fn(() => 1),
   json: vi.fn(),
-  elements: vi.fn(() => ({
-    diff: vi.fn(() => ({ left: [], right: [], both: [] })),
-    map: vi.fn(() => []),
-  })),
+  elements: vi.fn(() => {
+    const arr: unknown[] = [];
+    (arr as Record<string, unknown>).map = vi.fn(() => []);
+    (arr as Record<string, unknown>).filter = vi.fn(() => arr);
+    return arr;
+  }),
+  startBatch: vi.fn(),
+  endBatch: vi.fn(),
   mount: vi.fn(),
   style: vi.fn(),
   width: vi.fn(() => 800),
@@ -43,9 +47,10 @@ vi.mock("cytoscape-fcose", () => ({ default: vi.fn() }));
 // Mock useGraphData
 const mockUseGraphData = vi.fn();
 const mockExpandNeighbors = vi.fn().mockResolvedValue(null);
+const mockUseExpandNeighbors = vi.fn(() => ({ expandNeighbors: mockExpandNeighbors }));
 vi.mock("@/hooks/useGraphData", () => ({
   useGraphData: (...args: unknown[]) => mockUseGraphData(...args),
-  useExpandNeighbors: () => ({ expandNeighbors: mockExpandNeighbors }),
+  useExpandNeighbors: (...args: unknown[]) => mockUseExpandNeighbors(...args),
 }));
 
 // Mock useEntityDetail for EntityDetailCard
@@ -260,5 +265,42 @@ describe("GraphCanvas", () => {
     );
     expect(mouseoverCalls.length).toBeGreaterThan(0);
     expect(mouseoutCalls.length).toBeGreaterThan(0);
+  });
+
+  it("renders GraphFilterPanel when graph has data", () => {
+    mockUseGraphData.mockReturnValue({
+      data: mockGraphData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(createElement(GraphCanvas, { investigationId: "inv-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    // Filter panel renders in collapsed mode with "Filters" text
+    expect(screen.getByText("Filters")).toBeTruthy();
+  });
+
+  it("passes filters to useGraphData", () => {
+    mockUseGraphData.mockReturnValue({
+      data: mockGraphData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(createElement(GraphCanvas, { investigationId: "inv-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    // useGraphData should be called with investigationId and filters object
+    expect(mockUseGraphData).toHaveBeenCalledWith("inv-1", {
+      entityTypes: undefined,
+      documentId: undefined,
+    });
   });
 });
