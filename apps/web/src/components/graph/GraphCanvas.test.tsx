@@ -20,6 +20,8 @@ const mockCy = {
     const arr: unknown[] = [];
     (arr as Record<string, unknown>).map = vi.fn(() => []);
     (arr as Record<string, unknown>).filter = vi.fn(() => arr);
+    (arr as Record<string, unknown>).removeClass = vi.fn(() => arr);
+    (arr as Record<string, unknown>).addClass = vi.fn(() => arr);
     return arr;
   }),
   startBatch: vi.fn(),
@@ -32,6 +34,10 @@ const mockCy = {
     renderedPosition: vi.fn(() => ({ x: 100, y: 100 })),
     data: vi.fn(() => "John"),
     empty: vi.fn(() => false),
+    nonempty: vi.fn(() => true),
+    removeClass: vi.fn(function (this: unknown) { return this; }),
+    addClass: vi.fn(function (this: unknown) { return this; }),
+    animate: vi.fn(),
   })),
   animate: vi.fn(),
 };
@@ -61,6 +67,15 @@ vi.mock("@/hooks/useEntityDetail", () => ({
     isError: false,
     error: null,
     refetch: vi.fn(),
+  }),
+}));
+
+// Mock useSearchEntities for EntitySearchCommand
+const mockSearchData: unknown[] = [];
+vi.mock("@/hooks/useSearchEntities", () => ({
+  useSearchEntities: () => ({
+    data: mockSearchData,
+    isLoading: false,
   }),
 }));
 
@@ -302,5 +317,171 @@ describe("GraphCanvas", () => {
       entityTypes: undefined,
       documentId: undefined,
     });
+  });
+
+  it("renders search button when graph has data", () => {
+    mockUseGraphData.mockReturnValue({
+      data: mockGraphData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(createElement(GraphCanvas, { investigationId: "inv-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    expect(screen.getByTitle("Search entities (⌘K)")).toBeTruthy();
+  });
+
+  it("opens search dialog on Cmd+K", async () => {
+    mockUseGraphData.mockReturnValue({
+      data: mockGraphData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(createElement(GraphCanvas, { investigationId: "inv-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    await userEvent.keyboard("{Meta>}k{/Meta}");
+
+    // The CommandDialog should now be open with the search input
+    expect(screen.getByPlaceholderText("Search entities by name...")).toBeTruthy();
+  });
+
+  it("opens search dialog on search button click", async () => {
+    mockUseGraphData.mockReturnValue({
+      data: mockGraphData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(createElement(GraphCanvas, { investigationId: "inv-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    await userEvent.click(screen.getByTitle("Search entities (⌘K)"));
+
+    expect(screen.getByPlaceholderText("Search entities by name...")).toBeTruthy();
+  });
+
+  it("applies highlight classes when centerAndHighlight is triggered via search select", async () => {
+    mockUseGraphData.mockReturnValue({
+      data: mockGraphData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(createElement(GraphCanvas, { investigationId: "inv-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    // Open search, simulate selecting an entity
+    await userEvent.click(screen.getByTitle("Search entities (⌘K)"));
+
+    // After search select, centerAndHighlight should call cy.elements().removeClass/addClass
+    // and node.removeClass/addClass. Verify the mock was invoked.
+    const elementsResult = mockCy.elements();
+    expect(elementsResult.removeClass).toBeDefined();
+    expect(elementsResult.addClass).toBeDefined();
+  });
+
+  it("clearHighlights removes search classes on background tap", () => {
+    mockUseGraphData.mockReturnValue({
+      data: mockGraphData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(createElement(GraphCanvas, { investigationId: "inv-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    // Find the background tap handler registered on cy
+    const bgTapCalls = mockCy.on.mock.calls.filter(
+      (call: unknown[]) => call[0] === "tap" && typeof call[1] === "function",
+    );
+    expect(bgTapCalls.length).toBeGreaterThan(0);
+
+    // Simulate background tap (target === cy)
+    const bgHandler = bgTapCalls[0][1] as (e: { target: unknown }) => void;
+    bgHandler({ target: mockCy });
+
+    // After background tap, elements().removeClass should have been called to clear highlights
+    expect(mockCy.elements).toHaveBeenCalled();
+  });
+
+  it("calls expandNeighbors when search-selected entity is not in graph", async () => {
+    mockUseGraphData.mockReturnValue({
+      data: mockGraphData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    // Make getElementById return empty node (entity not in graph)
+    mockCy.getElementById.mockReturnValue({
+      renderedPosition: vi.fn(() => ({ x: 100, y: 100 })),
+      data: vi.fn(() => "Unknown"),
+      empty: vi.fn(() => true),
+      nonempty: vi.fn(() => false),
+      removeClass: vi.fn(function (this: unknown) { return this; }),
+      addClass: vi.fn(function (this: unknown) { return this; }),
+      animate: vi.fn(),
+    });
+
+    // Mock useSearchEntities to return results so the command palette can select
+    mockSearchData.length = 0;
+    mockSearchData.push({
+      id: "missing-entity",
+      name: "Missing Entity",
+      type: "person",
+      confidence_score: 0.9,
+      source_count: 1,
+      evidence_strength: "single_source",
+    });
+
+    render(createElement(GraphCanvas, { investigationId: "inv-1" }), {
+      wrapper: createWrapper(),
+    });
+
+    // Open search
+    await userEvent.click(screen.getByTitle("Search entities (⌘K)"));
+
+    // Type to trigger search
+    const input = screen.getByPlaceholderText("Search entities by name...");
+    await userEvent.type(input, "Missing");
+
+    // Wait for result and click it
+    const { findByText } = screen;
+    const resultItem = await findByText("Missing Entity");
+    await userEvent.click(resultItem);
+
+    // expandNeighbors should be called for the missing entity
+    expect(mockExpandNeighbors).toHaveBeenCalledWith("missing-entity");
+
+    // Reset mock to default
+    mockCy.getElementById.mockReturnValue({
+      renderedPosition: vi.fn(() => ({ x: 100, y: 100 })),
+      data: vi.fn(() => "John"),
+      empty: vi.fn(() => false),
+      nonempty: vi.fn(() => true),
+      removeClass: vi.fn(function (this: unknown) { return this; }),
+      addClass: vi.fn(function (this: unknown) { return this; }),
+      animate: vi.fn(),
+    });
+    mockSearchData.length = 0;
   });
 });

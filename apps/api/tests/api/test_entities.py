@@ -1,4 +1,4 @@
-"""Integration tests for GET /api/v1/investigations/{id}/entities/{entity_id}."""
+"""Integration tests for entities API endpoints."""
 
 import uuid
 from unittest.mock import AsyncMock, patch
@@ -6,7 +6,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.schemas.entity import EntityDetailResponse, EntityRelationship, EntitySource
+from app.schemas.entity import (
+    EntityDetailResponse,
+    EntityListItem,
+    EntityListResponse,
+    EntityRelationship,
+    EntitySource,
+    EntityTypeSummary,
+)
 
 
 INVESTIGATION_ID = "11111111-1111-1111-1111-111111111111"
@@ -134,3 +141,151 @@ class TestGetEntityDetail:
         assert data["relationships"] == []
         assert data["sources"] == []
         assert data["evidence_strength"] == "none"
+
+
+def _list_response(items: list[EntityListItem], total: int | None = None) -> EntityListResponse:
+    """Helper to build an EntityListResponse for search tests."""
+    type_counts = {"Person": 0, "Organization": 0, "Location": 0}
+    for item in items:
+        key = item.type.capitalize()
+        if key in type_counts:
+            type_counts[key] += 1
+    t = total if total is not None else len(items)
+    return EntityListResponse(
+        items=items,
+        total=t,
+        summary=EntityTypeSummary(
+            people=type_counts["Person"],
+            organizations=type_counts["Organization"],
+            locations=type_counts["Location"],
+            total=t,
+        ),
+    )
+
+
+_JOHN = EntityListItem(
+    id="e1", name="John Smith", type="person", confidence_score=0.9,
+    source_count=3, evidence_strength="corroborated",
+)
+_JANE = EntityListItem(
+    id="e2", name="Jane Johnson", type="person", confidence_score=0.85,
+    source_count=2, evidence_strength="corroborated",
+)
+_ACME = EntityListItem(
+    id="e3", name="Acme Organization", type="organization", confidence_score=0.8,
+    source_count=1, evidence_strength="single_source",
+)
+_BERLIN = EntityListItem(
+    id="e4", name="Berlin", type="location", confidence_score=0.7,
+    source_count=1, evidence_strength="single_source",
+)
+
+
+class TestListEntitiesSearch:
+    """Tests for GET /investigations/{id}/entities/?search=..."""
+
+    def test_search_returns_matching_entities(self, entity_client):
+        """search=john returns only entities whose names contain 'john' (case-insensitive)."""
+        resp = _list_response([_JOHN, _JANE])
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.list_entities = AsyncMock(return_value=resp)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.get(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/?search=john"
+            )
+
+        assert response.status_code == 200
+        mock_svc.list_entities.assert_called_once()
+        call_kwargs = mock_svc.list_entities.call_args
+        assert call_kwargs.kwargs.get("search") == "john"
+        data = response.json()
+        assert len(data["items"]) == 2
+
+    def test_search_combined_with_type_filter(self, entity_client):
+        """search=john&type=person — combined search + type filter (AND logic)."""
+        resp = _list_response([_JOHN])
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.list_entities = AsyncMock(return_value=resp)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.get(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/?search=john&type=person"
+            )
+
+        assert response.status_code == 200
+        call_kwargs = mock_svc.list_entities.call_args
+        assert call_kwargs.kwargs.get("entity_type") == "person"
+        assert call_kwargs.kwargs.get("search") == "john"
+
+    def test_search_no_results(self, entity_client):
+        """search=nonexistent returns empty results with total: 0."""
+        resp = _list_response([], total=0)
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.list_entities = AsyncMock(return_value=resp)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.get(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/?search=nonexistent"
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["items"] == []
+        assert data["total"] == 0
+
+    def test_empty_search_returns_all_entities(self, entity_client):
+        """search= (empty string) — same as no search, returns all entities."""
+        resp = _list_response([_JOHN, _JANE, _ACME, _BERLIN])
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.list_entities = AsyncMock(return_value=resp)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.get(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/?search="
+            )
+
+        assert response.status_code == 200
+        # Empty search string should be passed as empty string (service treats it as no filter)
+        mock_svc.list_entities.assert_called_once()
+
+    def test_search_case_insensitive(self, entity_client):
+        """search=ORG — case-insensitive match returns entities with 'org' in the name."""
+        resp = _list_response([_ACME])
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.list_entities = AsyncMock(return_value=resp)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.get(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/?search=ORG"
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["items"]) == 1
+        assert data["items"][0]["name"] == "Acme Organization"
+
+    def test_search_type_summary_reflects_filtered_results(self, entity_client):
+        """type_summary in response reflects search-filtered results, not all entities."""
+        resp = _list_response([_JOHN])
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.list_entities = AsyncMock(return_value=resp)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.get(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/?search=john"
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        summary = data["summary"]
+        assert summary["people"] == 1
+        assert summary["organizations"] == 0
+        assert summary["locations"] == 0
+        assert summary["total"] == 1

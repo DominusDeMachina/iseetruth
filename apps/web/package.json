@@ -38,6 +38,7 @@
     "@tanstack/react-router-devtools": "^1.166.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "cytoscape": "^3.33.1",
     "cytoscape-fcose": "^2.2.0",
     "lucide-react": "^0.577.0",

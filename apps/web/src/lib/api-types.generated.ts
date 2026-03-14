@@ -894,6 +894,7 @@ export interface operations {
         parameters: {
             query?: {
                 type?: string | null;
+                search?: string | null;
                 limit?: number;
                 offset?: number;
             };

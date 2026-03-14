@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, useState, useMemo } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { useCytoscape } from "@/hooks/useCytoscape";
 import {
   useGraphData,
@@ -7,11 +7,13 @@ import {
   type GraphFilters,
 } from "@/hooks/useGraphData";
 import type { DocumentResponse } from "@/hooks/useDocuments";
+import type { EntityListItem } from "@/hooks/useEntities";
 import { cytoscapeStylesheet } from "@/lib/cytoscape-styles";
 import { GraphControls } from "./GraphControls";
 import { GraphFilterPanel } from "./GraphFilterPanel";
 import { EntityDetailCard } from "./EntityDetailCard";
 import { EdgeDetailPopover } from "./EdgeDetailPopover";
+import { EntitySearchCommand } from "./EntitySearchCommand";
 
 interface GraphCanvasProps {
   investigationId: string;
@@ -77,15 +79,26 @@ export function GraphCanvas({ investigationId, documents }: GraphCanvasProps) {
     targetName: string;
   }>({ sourceName: "", targetName: "" });
 
+  // Search state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [highlightedEntityIds, setHighlightedEntityIds] = useState<string[]>([]);
+
   // Tooltip ref for node hover
   const tooltipRef = useRef<HTMLDivElement | null>(null);
+
+  const clearHighlights = useCallback(() => {
+    if (!cy) return;
+    cy.elements().removeClass("search-highlighted search-dimmed");
+    setHighlightedEntityIds([]);
+  }, [cy]);
 
   const clearSelection = useCallback(() => {
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
     setCardPosition(null);
     setSelectedEdgeData(null);
-  }, []);
+    clearHighlights();
+  }, [clearHighlights]);
 
   // Close detail card when filter change removes the selected node or edge
   useEffect(() => {
@@ -316,6 +329,104 @@ export function GraphCanvas({ investigationId, documents }: GraphCanvasProps) {
     console.log(`Ask about entity: ${entityName}`);
   }, []);
 
+  const centerAndHighlight = useCallback(
+    (entityId: string) => {
+      if (!cy) return;
+      const node = cy.getElementById(entityId);
+      if (node.empty()) return;
+
+      // Clear previous highlights before applying new ones
+      cy.elements().removeClass("search-highlighted search-dimmed");
+      cy.elements().addClass("search-dimmed");
+      node.removeClass("search-dimmed").addClass("search-highlighted");
+
+      // Center on node
+      cy.animate({
+        center: { eles: node },
+        zoom: cy.zoom(),
+        duration: reducedMotion ? 0 : 400,
+        easing: "ease-out",
+        complete: () => {
+          // Pulse animation: 2 cycles of border-width oscillation
+          if (!reducedMotion) {
+            node.animate({
+              style: { "border-width": 6 } as unknown as Record<string, string>,
+              duration: 150,
+              easing: "ease-in-out",
+              complete: () => {
+                node.animate({
+                  style: { "border-width": 4 } as unknown as Record<string, string>,
+                  duration: 150,
+                  easing: "ease-in-out",
+                  complete: () => {
+                    node.animate({
+                      style: { "border-width": 6 } as unknown as Record<string, string>,
+                      duration: 150,
+                      easing: "ease-in-out",
+                      complete: () => {
+                        node.animate({
+                          style: { "border-width": 4 } as unknown as Record<string, string>,
+                          duration: 150,
+                          easing: "ease-in-out",
+                        });
+                      },
+                    });
+                  },
+                });
+              },
+            });
+          }
+        },
+      });
+    },
+    [cy, reducedMotion],
+  );
+
+  const handleSearchSelect = useCallback(
+    (entity: EntityListItem) => {
+      setSearchOpen(false);
+      if (!cy) return;
+
+      const node = cy.getElementById(entity.id);
+      if (node.nonempty()) {
+        // Node already in graph — center and highlight directly
+        centerAndHighlight(entity.id);
+      } else {
+        // Node not in graph — expand neighbors to load it, then highlight
+        setHighlightedEntityIds([entity.id]);
+        expandNeighbors(entity.id);
+      }
+    },
+    [cy, centerAndHighlight, expandNeighbors],
+  );
+
+  // After expand adds new nodes, center on highlighted entity
+  useEffect(() => {
+    if (!cy || highlightedEntityIds.length === 0) return;
+    const targetId = highlightedEntityIds[0];
+    const node = cy.getElementById(targetId);
+    if (node.nonempty()) {
+      // Wait for layout to settle before centering
+      const timeout = setTimeout(() => {
+        centerAndHighlight(targetId);
+        setHighlightedEntityIds([]);
+      }, reducedMotion ? 50 : 500);
+      return () => clearTimeout(timeout);
+    }
+  }, [cy, highlightedEntityIds, data, centerAndHighlight, reducedMotion]);
+
+  // Keyboard shortcut: Cmd/Ctrl+K to open search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
   const handleRelayout = useCallback(() => {
     if (!cy) return;
     cy.layout(buildFcoseOptions(reducedMotion)).run();
@@ -413,6 +524,26 @@ export function GraphCanvas({ investigationId, documents }: GraphCanvasProps) {
       {cy && !overlay && (
         <GraphControls cy={cy} onRelayout={handleRelayout} />
       )}
+
+      {/* Search button */}
+      {cy && !overlay && (
+        <button
+          onClick={() => setSearchOpen(true)}
+          className="absolute top-3 right-3 z-30 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-1.5 shadow-lg transition-colors hover:bg-[var(--bg-hover)]"
+          title="Search entities (⌘K)"
+          aria-label="Search entities"
+        >
+          <Search className="size-4 text-[var(--text-primary)]" />
+        </button>
+      )}
+
+      {/* Entity Search Command Palette */}
+      <EntitySearchCommand
+        investigationId={investigationId}
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        onSelectEntity={handleSearchSelect}
+      />
 
       {/* Entity Detail Card */}
       {selectedNodeId && cardPosition && (

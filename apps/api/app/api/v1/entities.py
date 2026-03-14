@@ -21,6 +21,7 @@ ALLOWED_ENTITY_TYPES = {"person", "organization", "location"}
 async def list_entities(
     investigation_id: uuid.UUID,
     type: str | None = None,
+    search: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -33,7 +34,7 @@ async def list_entities(
         )
     service = EntityQueryService(neo4j_driver, db)
     return await service.list_entities(
-        investigation_id, entity_type=type, limit=limit, offset=offset
+        investigation_id, entity_type=type, search=search, limit=limit, offset=offset
     )
 
 

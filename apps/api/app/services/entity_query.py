@@ -24,16 +24,19 @@ class EntityQueryService:
         self,
         investigation_id: uuid.UUID,
         entity_type: str | None = None,
+        search: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> EntityListResponse:
         """Return paginated entity list with confidence scores and summary counts."""
         inv_id_str = str(investigation_id)
+        # Treat empty string search as no search
+        effective_search = search if search and search.strip() else None
 
         async with self.neo4j_driver.session() as session:
             # Fetch all entities (pre-pagination) for summary counts
             all_records = await session.execute_read(
-                _fetch_entity_list, inv_id_str, entity_type
+                _fetch_entity_list, inv_id_str, entity_type, effective_search
             )
 
         # Compute summary from full result set
@@ -169,26 +172,32 @@ class EntityQueryService:
 # Neo4j read transaction helpers
 # ---------------------------------------------------------------------------
 
-async def _fetch_entity_list(tx, investigation_id: str, entity_type: str | None):
+async def _fetch_entity_list(
+    tx, investigation_id: str, entity_type: str | None, search: str | None = None
+):
     """Fetch all entities for an investigation with source counts."""
     if entity_type:
         label = entity_type.capitalize()
-        query = (
-            f"MATCH (e:{label} {{investigation_id: $investigation_id}}) "
-            "OPTIONAL MATCH (e)-[m:MENTIONED_IN]->(d:Document) "
-            "WITH e, labels(e)[0] AS type, e.confidence_score AS confidence_score, "
-            "COUNT(DISTINCT d) AS source_count "
-            "RETURN e.id AS id, e.name AS name, type, confidence_score, source_count"
-        )
+        match_clause = f"MATCH (e:{label} {{investigation_id: $investigation_id}})"
     else:
-        query = (
-            "MATCH (e:Person|Organization|Location {investigation_id: $investigation_id}) "
-            "OPTIONAL MATCH (e)-[m:MENTIONED_IN]->(d:Document) "
-            "WITH e, labels(e)[0] AS type, e.confidence_score AS confidence_score, "
-            "COUNT(DISTINCT d) AS source_count "
-            "RETURN e.id AS id, e.name AS name, type, confidence_score, source_count"
-        )
-    result = await tx.run(query, investigation_id=investigation_id)
+        match_clause = "MATCH (e:Person|Organization|Location {investigation_id: $investigation_id})"
+
+    where_clause = ""
+    if search:
+        where_clause = " WHERE toLower(e.name) CONTAINS toLower($search)"
+
+    query = (
+        f"{match_clause}"
+        f"{where_clause} "
+        "OPTIONAL MATCH (e)-[m:MENTIONED_IN]->(d:Document) "
+        "WITH e, labels(e)[0] AS type, e.confidence_score AS confidence_score, "
+        "COUNT(DISTINCT d) AS source_count "
+        "RETURN e.id AS id, e.name AS name, type, confidence_score, source_count"
+    )
+    params = {"investigation_id": investigation_id}
+    if search:
+        params["search"] = search
+    result = await tx.run(query, **params)
     return await result.data()
 
 

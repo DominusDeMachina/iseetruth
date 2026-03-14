@@ -123,4 +123,33 @@ export const cytoscapeStylesheet: Stylesheet[] = [
       height: "mapData(relationship_count, 0, 20, 36.75, 63)",
     },
   },
+
+  // Search-highlighted node — warm glow effect
+  {
+    selector: "node.search-highlighted",
+    style: {
+      "border-color": "#e8e0d4",
+      "border-width": 4,
+      "border-opacity": 1,
+      "overlay-color": "#e8e0d4",
+      "overlay-padding": 8,
+      "overlay-opacity": 0.15,
+    },
+  },
+
+  // Search-dimmed node — de-emphasis for non-matching nodes
+  {
+    selector: "node.search-dimmed",
+    style: {
+      opacity: 0.3,
+    },
+  },
+
+  // Search-dimmed edge — de-emphasis for edges between non-highlighted nodes
+  {
+    selector: "edge.search-dimmed",
+    style: {
+      opacity: 0.15,
+    },
+  },
 ];
