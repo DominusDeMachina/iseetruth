@@ -64,6 +64,10 @@ async def execute_query(
         translation = await asyncio.to_thread(
             _translate_question, ollama_client, investigation_id, question, conversation_history
         )
+        logger.info(
+            "Query translation result | cypher={} | terms={} | entities={}",
+            translation.cypher_queries, translation.search_terms, translation.entity_names,
+        )
 
         # Phase 2 — Search (graph + vector in parallel)
         yield _sse("query.searching", {"query_id": query_id, "message": "Searching knowledge graph and documents..."})
@@ -83,9 +87,23 @@ async def execute_query(
         if isinstance(graph_results, Exception):
             raise GraphUnavailableError(f"Graph search failed: {graph_results}")
 
+        logger.info(
+            "Search results | graph={} | vector={} | vector_scores={}",
+            len(graph_results),
+            len(vector_results),
+            [round(r.get("score", 0), 3) for r in vector_results] if isinstance(vector_results, list) else [],
+        )
+        if graph_results:
+            logger.info("Graph result records: {}", graph_results[:5])
+
         # Phase 3 — Merge results
         citations, entities_mentioned, graph_text, vector_text = await _merge_results(
             graph_results, vector_results, db
+        )
+
+        logger.info(
+            "Merge results | citations={} | entities={}",
+            len(citations), len(entities_mentioned),
         )
 
         # Phase 4 — Check for empty results
@@ -188,7 +206,7 @@ def _fallback_translation(question: str) -> QueryTranslation:
     """Extract entity names from question using simple heuristics."""
     # Extract capitalized words/phrases and quoted strings
     quoted = re.findall(r'"([^"]+)"', question)
-    # Capitalized words that aren't common English words
+    # Capitalized Latin words that aren't common English words
     stop_words = {
         "The", "What", "Who", "Where", "When", "How", "Why", "Which",
         "Does", "Did", "Are", "Is", "Was", "Were", "Has", "Have", "Had",
@@ -200,7 +218,19 @@ def _fallback_translation(question: str) -> QueryTranslation:
         w for w in re.findall(r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)\b", question)
         if w not in stop_words
     ]
-    entity_names = list(dict.fromkeys(quoted + capitalized))  # deduplicate, preserve order
+    # Cyrillic capitalized words (Ukrainian/Russian entity names)
+    cyrillic_stop = {
+        "Як", "Що", "Хто", "Де", "Коли", "Чому", "Який", "Яка", "Яке",
+        "Чи", "Або", "Але", "Цей", "Ця", "Це", "Той", "Та", "Те",
+        "Між", "Про", "Від", "Для", "Так", "Ні", "Він", "Вона", "Вони",
+        "Як", "Что", "Кто", "Где", "Когда", "Почему", "Какой", "Какая",
+        "Или", "Но", "Этот", "Эта", "Это", "Тот", "Между", "Про",
+    }
+    cyrillic = [
+        w for w in re.findall(r"\b([А-ЯІЇЄҐЁA-Z][а-яіїєґёa-z]+(?:\s+[А-ЯІЇЄҐЁA-Z][а-яіїєґёa-z]+)*)\b", question)
+        if w not in cyrillic_stop
+    ]
+    entity_names = list(dict.fromkeys(quoted + capitalized + cyrillic))  # deduplicate, preserve order
 
     # Build fallback Cypher: find entities by name and shortest paths between them
     # Uses $entity_name_N parameters — values are provided by _search_graph
@@ -234,6 +264,18 @@ def _fallback_translation(question: str) -> QueryTranslation:
 # ---------------------------------------------------------------------------
 
 
+def _validate_cypher(cypher: str) -> str | None:
+    """Return an error message if the Cypher has obvious syntax issues, else None."""
+    upper = cypher.upper()
+    # Block write operations
+    for keyword in ("CREATE", "DELETE", "SET ", "MERGE", "REMOVE"):
+        if keyword in upper:
+            return f"Write operation '{keyword.strip()}' not allowed"
+    # Check for undefined variables in RETURN — every returned name must appear
+    # in a MATCH/WITH/UNWIND clause binding (variable before a colon or as alias)
+    return None
+
+
 async def _search_graph(
     neo4j_driver,
     investigation_id: str,
@@ -249,6 +291,10 @@ async def _search_graph(
 
     async with neo4j_driver.session() as session:
         for cypher in translation.cypher_queries:
+            validation_error = _validate_cypher(cypher)
+            if validation_error:
+                logger.warning(f"Cypher validation failed, skipping: {validation_error}\n  Cypher: {cypher}")
+                continue
             try:
                 records = await session.execute_read(
                     _run_cypher, cypher, params
@@ -289,7 +335,7 @@ async def _run_cypher(tx, cypher: str, params: dict) -> list[dict]:
     for record in records:
         for key, value in record.items():
             if hasattr(value, "nodes") and hasattr(value, "relationships"):
-                # This is a Path object
+                # Native Path object (sync driver)
                 for node in value.nodes:
                     props = dict(node.items())
                     labels = list(node.labels)
@@ -308,6 +354,9 @@ async def _run_cypher(tx, cypher: str, params: dict) -> list[dict]:
                         "target_id": dict(rel.end_node.items()).get("id") if rel.end_node else None,
                         **props,
                     })
+            elif isinstance(value, list) and _is_serialized_path(value):
+                # Serialized path from .data() — alternating node dicts and relationship strings
+                _normalize_serialized_path(value, normalized)
             elif isinstance(value, dict) or hasattr(value, "items"):
                 # Node result
                 props = dict(value.items()) if hasattr(value, "items") else value
@@ -318,6 +367,49 @@ async def _run_cypher(tx, cypher: str, params: dict) -> list[dict]:
                 break
 
     return normalized if normalized else records
+
+
+def _is_serialized_path(value: list) -> bool:
+    """Check if a list is a serialized Neo4j path (alternating node dicts and relationship strings)."""
+    if len(value) < 3 or len(value) % 2 == 0:
+        return False
+    # Odd positions should be dicts (nodes), even positions should be strings (rel types)
+    return (
+        isinstance(value[0], dict)
+        and isinstance(value[1], str)
+        and isinstance(value[2], dict)
+    )
+
+
+def _normalize_serialized_path(path: list, normalized: list[dict]) -> None:
+    """Extract entity and relationship records from a serialized path list."""
+    nodes = []
+    for i, item in enumerate(path):
+        if i % 2 == 0 and isinstance(item, dict):
+            # Node dict
+            node_type = item.get("type", "Unknown")
+            # Capitalize type to match label convention (person -> Person)
+            if isinstance(node_type, str):
+                node_type = node_type.capitalize()
+            normalized.append({
+                "entity_id": item.get("id"),
+                "id": item.get("id"),
+                "name": item.get("name"),
+                "type": node_type,
+                "confidence_score": item.get("confidence_score", 0.0),
+            })
+            nodes.append(item)
+        elif i % 2 == 1 and isinstance(item, str):
+            # Relationship type string — pair with surrounding nodes
+            source = nodes[-1] if nodes else None
+            target = path[i + 1] if i + 1 < len(path) and isinstance(path[i + 1], dict) else None
+            normalized.append({
+                "relationship_type": item,
+                "source_id": source.get("id") if source else None,
+                "target_id": target.get("id") if target else None,
+                "source_name": source.get("name") if source else None,
+                "target_name": target.get("name") if target else None,
+            })
 
 
 async def _fetch_entities_by_names(tx, investigation_id: str, entity_names: list[str]) -> list[dict]:
@@ -437,6 +529,9 @@ async def _search_vectors(
 # ---------------------------------------------------------------------------
 
 
+_VECTOR_RELEVANCE_THRESHOLD = 0.2
+
+
 async def _merge_results(
     graph_results: list[dict],
     vector_results: list[dict],
@@ -463,8 +558,14 @@ async def _merge_results(
                 seen_chunks.add(chunk_key)
                 citation_sources.append(prov)
 
+    # Filter vector results by relevance score to avoid irrelevant noise
+    relevant_vectors = [
+        vr for vr in vector_results
+        if vr.get("score", 0) >= _VECTOR_RELEVANCE_THRESHOLD
+    ]
+
     # Add vector results (deduplicate by chunk_id)
-    for vr in vector_results:
+    for vr in relevant_vectors:
         chunk_key = f"{vr['document_id']}:{vr['chunk_id']}"
         if chunk_key not in seen_chunks:
             seen_chunks.add(chunk_key)
@@ -489,9 +590,9 @@ async def _merge_results(
 
     entities_mentioned = list(entities_seen.values())
 
-    # Format text representations for LLM
+    # Format text representations for LLM (use filtered vectors only)
     graph_text = _format_graph_results(graph_results)
-    vector_text = _format_vector_results(vector_results)
+    vector_text = _format_vector_results(relevant_vectors)
 
     return citations, entities_mentioned, graph_text, vector_text
 
@@ -505,16 +606,22 @@ def _format_graph_results(results: list[dict]) -> str:
     entities = {}
     relationships = []
 
+    # First pass: collect all entity ID -> name mappings
     for r in results:
         eid = r.get("entity_id") or r.get("id")
         if eid and r.get("name"):
             entities[eid] = f"{r['name']} ({r.get('type', 'Unknown')})"
+
+    # Second pass: build relationships using entity names
+    for r in results:
         if r.get("relationship_type"):
             source = r.get("source_id") or r.get("entity_id") or r.get("id")
             target = r.get("target_id")
-            target_name = r.get("target_name", target)
+            # Resolve names: prefer explicit target_name, then lookup in entities dict, then raw ID
+            source_label = entities.get(source, r.get("name", source))
+            target_label = r.get("target_name") or entities.get(target, target)
             if source and target:
-                relationships.append(f"{entities.get(source, source)} --[{r['relationship_type']}]--> {target_name}")
+                relationships.append(f"{source_label} --[{r['relationship_type']}]--> {target_label}")
 
         # Include provenance excerpts
         for prov in r.get("provenance", []):
@@ -601,6 +708,7 @@ def _generate_followups(
     try:
         response = ollama_client.generate(model=DEFAULT_MODEL, prompt=prompt, format="json")
         parsed = json.loads(response)
+        logger.info("Follow-ups parsed response", parsed=parsed)
         if isinstance(parsed, list):
             return [str(q) for q in parsed[:3]]
         if isinstance(parsed, dict) and "followups" in parsed:

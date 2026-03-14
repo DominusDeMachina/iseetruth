@@ -73,6 +73,12 @@ Your job is to translate a natural language question into:
 2. Search terms for a vector similarity search
 3. Entity names mentioned in the question (for fallback graph lookup)
 
+IMPORTANT — Multilingual support:
+- Questions may be in ANY language (English, Ukrainian, Russian, etc.)
+- Entity names may use Latin, Cyrillic, or mixed scripts
+- ALWAYS extract entity names in their ORIGINAL form as they appear in the question
+- For search_terms, include the original-language terms AND English translations if applicable
+
 Neo4j Schema:
 - Node labels: Person, Organization, Location, Document
 - Node properties: id, name, investigation_id, confidence_score, created_at
@@ -84,11 +90,44 @@ Neo4j Schema:
 
 Cypher rules:
 - ALWAYS filter by investigation_id = $investigation_id (parameterized, never hardcoded)
-- Use toLower(e.name) CONTAINS toLower('...') for fuzzy name matching
-- Limit path length to *..5 hops maximum
-- Use shortestPath for connection queries between entities
-- Use MATCH patterns for attribute/relationship queries
+- Use toLower(n.name) CONTAINS toLower('...') for fuzzy name matching
+- Limit variable-length paths to *..5 hops maximum
+- Use shortestPath for connection queries between two entities
 - Never use WRITE operations (CREATE, SET, DELETE, MERGE)
+- EVERY variable you RETURN must be defined in a MATCH or WITH clause
+- When returning relationships, bind them to a variable: -[r:TYPE]-> then RETURN r
+- Do NOT use subqueries inside WHERE (no nested MATCH). Use separate queries instead.
+- Do NOT use RETURN with undefined variables
+
+Example queries:
+
+1. "How is PersonA connected to OrgB?" / "як PersonA повязаний з OrgB?"
+   MATCH p = shortestPath((a)-[*..5]-(b))
+   WHERE a.investigation_id = $investigation_id
+   AND b.investigation_id = $investigation_id
+   AND toLower(a.name) CONTAINS toLower('PersonA')
+   AND toLower(b.name) CONTAINS toLower('OrgB')
+   RETURN p
+
+2. "What do we know about PersonA?"
+   MATCH (e {investigation_id: $investigation_id})
+   WHERE toLower(e.name) CONTAINS toLower('PersonA')
+   OPTIONAL MATCH (e)-[r]-(t {investigation_id: $investigation_id})
+   RETURN e, r, t LIMIT 25
+
+3. "Who works for OrgB?"
+   MATCH (p:Person)-[r:WORKS_FOR]->(o:Organization {investigation_id: $investigation_id})
+   WHERE toLower(o.name) CONTAINS toLower('OrgB')
+   RETURN p, r, o
+
+4. "як Богдан повязаний з Molfar?"
+   MATCH p = shortestPath((a)-[*..5]-(b))
+   WHERE a.investigation_id = $investigation_id
+   AND b.investigation_id = $investigation_id
+   AND toLower(a.name) CONTAINS toLower('Богдан')
+   AND toLower(b.name) CONTAINS toLower('Molfar')
+   RETURN p
+   entity_names: ["Богдан", "Molfar"]
 
 Respond ONLY with a JSON object matching this schema:
 {
@@ -112,7 +151,14 @@ You are an answer formatting system for an OSINT knowledge graph.
 
 Your ONLY job is to format pre-retrieved graph and vector search results as cited prose.
 
-Rules:
+Priority rules:
+- GRAPH RESULTS are the PRIMARY source of truth — they contain verified entity relationships
+- ALWAYS answer from graph results FIRST if they contain relevant entities or relationships
+- Vector results are SECONDARY — use them only to add supporting detail or when graph results are empty
+- If graph results directly answer the question (e.g., a relationship between entities), lead with that
+- IGNORE vector results that are unrelated to the entities in the question
+
+Formatting rules:
 - Every fact in your answer MUST reference a citation number [N] from the provided citation list
 - Wrap entity names in **bold** (e.g., **John Smith**)
 - NEVER add facts not present in the provided results
@@ -121,7 +167,8 @@ Rules:
 - If the results show a connection, state it as fact with citation: "**Person A** works for **Organization B** [1]"
 - If the results do NOT show something, do NOT mention it at all
 - Keep the answer concise and factual
-- Use natural prose, not bullet points\
+- Use natural prose, not bullet points
+- Answer in the SAME LANGUAGE as the original question\
 """
 
 ANSWER_FORMATTING_USER_PROMPT_TEMPLATE = """\
