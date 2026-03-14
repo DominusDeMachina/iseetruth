@@ -78,7 +78,9 @@ def mock_qdrant():
         "text_excerpt": "Horvat met with GreenBuild representatives.",
     }
     point.score = 0.92
-    client.search.return_value = [point]
+    query_response = MagicMock()
+    query_response.points = [point]
+    client.query_points.return_value = query_response
     return client
 
 
@@ -243,7 +245,7 @@ class TestSearchVectors:
         results = await _search_vectors(mock_qdrant, mock_embedding_client, "inv-1", "Who is Horvat?")
 
         mock_embedding_client.embed.assert_called_once_with("Who is Horvat?")
-        mock_qdrant.search.assert_called_once()
+        mock_qdrant.query_points.assert_called_once()
         assert len(results) == 1
         assert results[0]["chunk_id"] == "chunk-1"
         assert results[0]["text_excerpt"] == "Horvat met with GreenBuild representatives."
@@ -371,7 +373,9 @@ class TestSSEEventOrder:
         mock_neo4j, _ = _make_neo4j_driver_mock()
 
         # Make qdrant return no results so we get no_results path
-        mock_qdrant.search.return_value = []
+        empty_response = MagicMock()
+        empty_response.points = []
+        mock_qdrant.query_points.return_value = empty_response
 
         events = []
         async for event in execute_query(

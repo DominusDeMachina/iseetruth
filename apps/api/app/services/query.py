@@ -255,7 +255,7 @@ async def _search_graph(
                 )
                 all_results.extend(records)
             except Exception as exc:
-                logger.warning("Cypher query failed, skipping", cypher=cypher, error=str(exc))
+                logger.warning(f"Cypher query failed, skipping: {exc}\n  Cypher: {cypher}")
 
         # If Cypher produced no results, try entity name lookup as fallback
         if not all_results and translation.entity_names:
@@ -408,9 +408,9 @@ async def _search_vectors(
 
     # Search Qdrant with investigation_id filter
     search_result = await asyncio.to_thread(
-        qdrant_client.search,
+        qdrant_client.query_points,
         collection_name=COLLECTION_NAME,
-        query_vector=vector,
+        query=vector,
         query_filter=Filter(
             must=[FieldCondition(key="investigation_id", match=MatchValue(value=investigation_id))]
         ),
@@ -418,7 +418,7 @@ async def _search_vectors(
     )
 
     results = []
-    for point in search_result:
+    for point in search_result.points:
         payload = point.payload or {}
         results.append({
             "chunk_id": payload.get("chunk_id"),

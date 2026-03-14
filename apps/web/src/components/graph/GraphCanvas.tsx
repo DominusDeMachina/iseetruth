@@ -18,6 +18,9 @@ import { EntitySearchCommand } from "./EntitySearchCommand";
 interface GraphCanvasProps {
   investigationId: string;
   documents?: DocumentResponse[];
+  onAskAboutEntity?: (entityName: string) => void;
+  highlightEntities?: string[];
+  onHighlightClear?: () => void;
 }
 
 function buildFcoseOptions(
@@ -36,7 +39,13 @@ function buildFcoseOptions(
   } as unknown as cytoscape.LayoutOptions;
 }
 
-export function GraphCanvas({ investigationId, documents }: GraphCanvasProps) {
+export function GraphCanvas({
+  investigationId,
+  documents,
+  onAskAboutEntity: onAskAboutEntityProp,
+  highlightEntities: highlightEntitiesProp,
+  onHighlightClear,
+}: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { cy, isReady, error: cyError, reducedMotion } = useCytoscape(containerRef);
 
@@ -324,10 +333,12 @@ export function GraphCanvas({ investigationId, documents }: GraphCanvasProps) {
     [cy, reducedMotion],
   );
 
-  const handleAskAboutEntity = useCallback((entityName: string) => {
-    // TODO: Epic 5 — wire to Q&A input
-    console.log(`Ask about entity: ${entityName}`);
-  }, []);
+  const handleAskAboutEntity = useCallback(
+    (entityName: string) => {
+      onAskAboutEntityProp?.(entityName);
+    },
+    [onAskAboutEntityProp],
+  );
 
   const centerAndHighlight = useCallback(
     (entityId: string) => {
@@ -414,6 +425,53 @@ export function GraphCanvas({ investigationId, documents }: GraphCanvasProps) {
       return () => clearTimeout(timeout);
     }
   }, [cy, highlightedEntityIds, data, centerAndHighlight, reducedMotion]);
+
+  // Highlight entities from Q&A answers
+  useEffect(() => {
+    if (!cy || !highlightEntitiesProp || highlightEntitiesProp.length === 0)
+      return;
+
+    // Find matching nodes by name (case-insensitive)
+    const matchingNodes = cy.nodes().filter((node) => {
+      const name = (node.data("name") as string) ?? "";
+      return highlightEntitiesProp.some(
+        (h) => h.toLowerCase() === name.toLowerCase(),
+      );
+    });
+
+    if (matchingNodes.empty()) return;
+
+    // Apply highlight classes
+    cy.elements().addClass("search-dimmed");
+    matchingNodes.removeClass("search-dimmed").addClass("search-highlighted");
+
+    // Center on first matching node
+    const first = matchingNodes.first();
+    cy.animate({
+      center: { eles: first },
+      zoom: cy.zoom(),
+      duration: reducedMotion ? 0 : 400,
+    });
+
+    return () => {
+      // Clean up when highlight entities change
+      cy.elements().removeClass("search-highlighted search-dimmed");
+    };
+  }, [cy, highlightEntitiesProp, reducedMotion]);
+
+  // Clear Q&A highlights when user interacts with graph
+  useEffect(() => {
+    if (!cy || !onHighlightClear) return;
+    const handler = () => {
+      if (highlightEntitiesProp && highlightEntitiesProp.length > 0) {
+        onHighlightClear();
+      }
+    };
+    cy.on("tap", handler);
+    return () => {
+      cy.off("tap", handler);
+    };
+  }, [cy, highlightEntitiesProp, onHighlightClear]);
 
   // Keyboard shortcut: Cmd/Ctrl+K to open search
   useEffect(() => {
