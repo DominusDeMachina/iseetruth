@@ -74,6 +74,11 @@ class EntityExtractionError(DomainError):
         super().__init__(detail, status_code=422, error_type="entity_extraction_failed")
 
 
+class GraphUnavailableError(DomainError):
+    def __init__(self, detail: str = "Knowledge graph service is unavailable"):
+        super().__init__(detail, status_code=503, error_type="graph_unavailable")
+
+
 class EntityNotFoundError(DomainError):
     def __init__(self, entity_id: str):
         super().__init__(

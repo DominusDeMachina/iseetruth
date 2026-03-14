@@ -75,8 +75,8 @@ development_status:
   epic-4-retrospective: optional
 
   # Epic 5: Natural Language Q&A with Source Citations
-  epic-5: backlog
-  5-1-graph-first-query-pipeline: backlog
+  epic-5: in-progress
+  5-1-graph-first-query-pipeline: done
   5-2-answer-streaming-qa-panel: backlog
   5-3-citation-click-through-viewer: backlog
   epic-5-retrospective: optional

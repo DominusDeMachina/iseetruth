@@ -204,6 +204,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/investigations/{investigation_id}/query/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query Investigation
+         * @description Execute a natural language query against an investigation's knowledge graph.
+         *
+         *     Returns an SSE stream with query pipeline events.
+         */
+        post: operations["query_investigation_api_v1_investigations__investigation_id__query__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -212,6 +234,16 @@ export interface components {
         Body_upload_documents_api_v1_investigations__investigation_id__documents_post: {
             /** Files */
             files: string[];
+        };
+        /** ConversationTurn */
+        ConversationTurn: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Content */
+            content: string;
         };
         /** DocumentListResponse */
         DocumentListResponse: {
@@ -507,6 +539,13 @@ export interface components {
          * @enum {string}
          */
         OverallStatusEnum: "healthy" | "degraded" | "unhealthy";
+        /** QueryRequest */
+        QueryRequest: {
+            /** Question */
+            question: string;
+            /** Conversation History */
+            conversation_history?: components["schemas"]["ConversationTurn"][] | null;
+        };
         /** ServiceStatus */
         ServiceStatus: {
             status: components["schemas"]["StatusEnum"];
@@ -1015,6 +1054,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GraphResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    query_investigation_api_v1_investigations__investigation_id__query__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                investigation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

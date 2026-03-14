@@ -34,3 +34,9 @@ class ExtractedRelationship(BaseModel):
 
 class RelationshipExtractionResponse(BaseModel):
     relationships: list[ExtractedRelationship]
+
+
+class QueryTranslation(BaseModel):
+    cypher_queries: list[str]
+    search_terms: list[str]
+    entity_names: list[str]
