@@ -208,7 +208,7 @@ class EntityExtractionService:
                     tgt_label = entity_type_map.get(rel.target_entity_name)
                     if src_label is None or tgt_label is None:
                         continue
-                    rel_type = rel.relation_type.value
+                    rel_type = rel.relation_type
                     tx.run(
                         f"MATCH (src:{src_label} {{name: $src_name, investigation_id: $inv_id}}) "
                         f"MATCH (tgt:{tgt_label} {{name: $tgt_name, investigation_id: $inv_id}}) "

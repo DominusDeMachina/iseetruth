@@ -49,7 +49,7 @@ async def query_investigation(
     query_id = str(uuid.uuid4())
 
     ollama_client = OllamaClient(settings.ollama_base_url)
-    embedding_client = OllamaEmbeddingClient(settings.ollama_base_url)
+    embedding_client = OllamaEmbeddingClient(settings.ollama_embedding_url)
     qdrant_client = get_qdrant_client()
     event_publisher = EventPublisher(settings.redis_url)
 

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from app.llm.schemas import EntityType, ExtractedEntity, ExtractedRelationship, RelationType
+from app.llm.schemas import EntityType, ExtractedEntity, ExtractedRelationship
 from app.services.extraction import EntityExtractionService, ExtractionSummary
 
 
@@ -169,7 +169,7 @@ class TestExtractRelationships:
 
         assert len(rels) == 1
         assert rels[0].source_entity_name == "John Smith"
-        assert rels[0].relation_type == RelationType.WORKS_FOR
+        assert rels[0].relation_type == "WORKS_FOR"
 
     def test_relationship_with_unknown_entity_name_is_excluded(
         self, mock_ollama, mock_neo4j_driver, sample_chunk, person_entity, org_entity

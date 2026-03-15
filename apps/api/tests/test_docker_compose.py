@@ -18,11 +18,11 @@ def test_production_compose_has_7_services():
     assert set(services) == expected
 
 
-def test_dev_compose_has_5_services():
+def test_dev_compose_has_9_services():
     compose = load_compose("docker-compose.dev.yml")
     services = list(compose["services"].keys())
-    assert len(services) == 5
-    expected = {"postgres", "neo4j", "qdrant", "redis", "ollama"}
+    assert len(services) == 9
+    expected = {"postgres", "neo4j", "qdrant", "redis", "ollama", "ollama-embedding", "api", "worker", "web"}
     assert set(services) == expected
 
 

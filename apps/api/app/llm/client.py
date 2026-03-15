@@ -40,11 +40,15 @@ class OllamaClient:
         if format is not None:
             body["format"] = format
 
+        logger.debug("Ollama request | model={} messages={}", model, messages)
         try:
             with httpx.Client(timeout=INFERENCE_TIMEOUT) as http:
                 response = http.post(f"{self._base_url}/api/chat", json=body)
                 response.raise_for_status()
-                return response.json()
+                data = response.json()
+                content = data.get("message", {}).get("content", "")
+                logger.debug("Ollama response | {}", content[:500])
+                return data
         except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
             logger.error("Ollama unavailable for chat", error=str(exc))
             raise OllamaUnavailableError(

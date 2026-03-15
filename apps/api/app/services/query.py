@@ -98,7 +98,7 @@ async def execute_query(
 
         # Phase 3 — Merge results
         citations, entities_mentioned, graph_text, vector_text = await _merge_results(
-            graph_results, vector_results, db
+            graph_results, vector_results, db, entity_names=translation.entity_names
         )
 
         logger.info(
@@ -220,17 +220,63 @@ def _fallback_translation(question: str) -> QueryTranslation:
     ]
     # Cyrillic capitalized words (Ukrainian/Russian entity names)
     cyrillic_stop = {
+        # Ukrainian question/function words
         "Як", "Що", "Хто", "Де", "Коли", "Чому", "Який", "Яка", "Яке",
         "Чи", "Або", "Але", "Цей", "Ця", "Це", "Той", "Та", "Те",
         "Між", "Про", "Від", "Для", "Так", "Ні", "Він", "Вона", "Вони",
-        "Як", "Что", "Кто", "Где", "Когда", "Почему", "Какой", "Какая",
-        "Или", "Но", "Этот", "Эта", "Это", "Тот", "Между", "Про",
+        # Russian question/function words
+        "Что", "Кто", "Где", "Когда", "Почему", "Какой", "Какая",
+        "Или", "Но", "Этот", "Эта", "Это", "Тот", "Между",
     }
-    cyrillic = [
-        w for w in re.findall(r"\b([А-ЯІЇЄҐЁA-Z][а-яіїєґёa-z]+(?:\s+[А-ЯІЇЄҐЁA-Z][а-яіїєґёa-z]+)*)\b", question)
-        if w not in cyrillic_stop
+    cyrillic_stop_lower = {w.lower() for w in cyrillic_stop} | {
+        # Ukrainian prepositions/conjunctions/particles
+        "з", "і", "у", "в", "на", "до", "за", "по", "та",
+        # Russian prepositions/conjunctions/particles
+        "с", "и", "к", "о", "об", "от",
+        # Ukrainian verbs/adjectives common in questions
+        "повязаний", "повязана", "повязане", "повязані", "пов'язаний",
+        "працює", "працюють", "працював", "працювала",
+        "знає", "знають", "знав", "знала",
+        "відомо", "відома", "відомий", "відомі",
+        "може", "можуть", "міг", "могла",
+        "має", "мають", "мав", "мала",
+        "знаходиться", "знаходяться", "розташований",
+        "належить", "належать", "входить", "входять",
+        # Russian verbs/adjectives common in questions
+        "связан", "связана", "связано", "связаны",
+        "работает", "работают", "работал", "работала",
+        "знает", "знают", "знал", "знала",
+        "известно", "известен", "известна", "известный",
+        "может", "могут", "мог", "могла",
+        "имеет", "имеют", "имел", "имела",
+        "находится", "находятся", "расположен",
+        "принадлежит", "принадлежат",
+        # Ukrainian/Russian pronouns and determiners
+        "якій", "яких", "яким", "якому", "якою", "які",
+        "його", "її", "їх", "нього", "неї", "них",
+        "цього", "цій", "цьому", "цих",
+        "того", "тій", "тому", "тих",
+        "ее", "их", "него", "нее",
+        "этого", "этой", "этому", "этих",
+    }
+    # Capitalized Cyrillic words (e.g., Богдан, Мольфар)
+    cyrillic_raw = re.findall(r"\b([А-ЯІЇЄҐЁA-Z][а-яіїєґёa-z]+(?:\s+[А-ЯІЇЄҐЁA-Z][а-яіїєґёa-z]+)*)\b", question)
+    cyrillic = []
+    for phrase in cyrillic_raw:
+        # Strip leading stop words from multi-word matches (e.g., "Як Богдан" → "Богдан")
+        words = phrase.split()
+        while words and words[0] in cyrillic_stop:
+            words.pop(0)
+        cleaned = " ".join(words)
+        if cleaned and cleaned not in cyrillic_stop:
+            cyrillic.append(cleaned)
+    # Also extract standalone Cyrillic words that might be entity names (lowercase abbreviations like "рф")
+    # Split by whitespace and common punctuation, keep words that aren't stop words
+    cyrillic_all = [
+        w for w in re.findall(r"\b([а-яіїєґёА-ЯІЇЄҐЁ]{2,})\b", question)
+        if w.lower() not in cyrillic_stop_lower
     ]
-    entity_names = list(dict.fromkeys(quoted + capitalized + cyrillic))  # deduplicate, preserve order
+    entity_names = list(dict.fromkeys(quoted + capitalized + cyrillic + cyrillic_all))  # deduplicate, preserve order
 
     # Build fallback Cypher: find entities by name and shortest paths between them
     # Uses $entity_name_N parameters — values are provided by _search_graph
@@ -242,13 +288,15 @@ def _fallback_translation(question: str) -> QueryTranslation:
             "AND b.investigation_id = $investigation_id "
             "AND toLower(a.name) CONTAINS toLower($entity_name_0) "
             "AND toLower(b.name) CONTAINS toLower($entity_name_1) "
+            "AND NONE(r IN relationships(p) WHERE type(r) = 'MENTIONED_IN') "
             "RETURN p"
         )
     elif len(entity_names) == 1:
         cypher_queries.append(
             "MATCH (e:Person|Organization|Location {investigation_id: $investigation_id}) "
             "WHERE toLower(e.name) CONTAINS toLower($entity_name_0) "
-            "OPTIONAL MATCH (e)-[r:WORKS_FOR|KNOWS|LOCATED_AT]-(t {investigation_id: $investigation_id}) "
+            "OPTIONAL MATCH (e)-[r]-(t {investigation_id: $investigation_id}) "
+            "WHERE type(r) <> 'MENTIONED_IN' "
             "RETURN e, r, t LIMIT 20"
         )
 
@@ -262,6 +310,31 @@ def _fallback_translation(question: str) -> QueryTranslation:
 # ---------------------------------------------------------------------------
 # Phase 2 — Graph Search
 # ---------------------------------------------------------------------------
+
+
+_MENTIONED_IN_NONE_FILTER = "NONE(r_mi IN relationships(p) WHERE type(r_mi) = 'MENTIONED_IN')"
+
+
+def _sanitize_cypher(cypher: str) -> str:
+    """Ensure variable-length paths exclude MENTIONED_IN document edges."""
+    # If the query has a variable-length path but doesn't exclude MENTIONED_IN,
+    # insert a NONE filter before the RETURN clause as a safety net.
+    if re.search(r"\[\*", cypher) and "MENTIONED_IN" not in cypher:
+        if re.search(r"\bWHERE\b", cypher, re.IGNORECASE):
+            cypher = re.sub(
+                r"\bRETURN\b",
+                f"AND {_MENTIONED_IN_NONE_FILTER} RETURN",
+                cypher,
+                count=1,
+            )
+        else:
+            cypher = re.sub(
+                r"\bRETURN\b",
+                f"WHERE {_MENTIONED_IN_NONE_FILTER} RETURN",
+                cypher,
+                count=1,
+            )
+    return cypher
 
 
 def _validate_cypher(cypher: str) -> str | None:
@@ -291,6 +364,7 @@ async def _search_graph(
 
     async with neo4j_driver.session() as session:
         for cypher in translation.cypher_queries:
+            cypher = _sanitize_cypher(cypher)
             validation_error = _validate_cypher(cypher)
             if validation_error:
                 logger.warning(f"Cypher validation failed, skipping: {validation_error}\n  Cypher: {cypher}")
@@ -424,7 +498,8 @@ async def _fetch_entities_by_names(tx, investigation_id: str, entity_names: list
     query = (
         f"MATCH (e:Person|Organization|Location {{investigation_id: $investigation_id}}) "
         f"WHERE {where_clause} "
-        "OPTIONAL MATCH (e)-[r:WORKS_FOR|KNOWS|LOCATED_AT]-(t {investigation_id: $investigation_id}) "
+        "OPTIONAL MATCH (e)-[r]-(t {investigation_id: $investigation_id}) "
+        "WHERE type(r) <> 'MENTIONED_IN' "
         "RETURN e.id AS entity_id, e.id AS id, e.name AS name, labels(e)[0] AS type, "
         "e.confidence_score AS confidence_score, "
         "type(r) AS relationship_type, t.id AS target_id, t.name AS target_name, "
@@ -529,16 +604,26 @@ async def _search_vectors(
 # ---------------------------------------------------------------------------
 
 
-_VECTOR_RELEVANCE_THRESHOLD = 0.2
+_VECTOR_RELEVANCE_THRESHOLD = 0.35
 
 
 _MAX_CITATIONS = 15
+
+
+def _vector_mentions_entity(text: str, entity_names: list[str]) -> bool:
+    """Check if a vector result text mentions any of the given entity names."""
+    text_lower = text.lower()
+    for name in entity_names:
+        if name.lower() in text_lower:
+            return True
+    return False
 
 
 async def _merge_results(
     graph_results: list[dict],
     vector_results: list[dict],
     db: AsyncSession,
+    entity_names: list[str] | None = None,
 ) -> tuple[list[Citation], list[EntityReference], str, str]:
     """Merge graph and vector results, deduplicate by document+page, build citations."""
     seen_pages: set[str] = set()
@@ -565,11 +650,26 @@ async def _merge_results(
                 seen_chunks.add(chunk_key)
                 citation_sources.append(prov)
 
-    # Filter vector results by relevance score to avoid irrelevant noise
-    relevant_vectors = [
-        vr for vr in vector_results
-        if vr.get("score", 0) >= _VECTOR_RELEVANCE_THRESHOLD
-    ]
+    # Build entity name list for filtering vector results
+    all_entity_names = list({e.name for e in entities_seen.values()})
+    if entity_names:
+        all_entity_names.extend(entity_names)
+    all_entity_names = list(set(all_entity_names))
+
+    # Filter vector results: score threshold + entity relevance when graph has results
+    has_graph = bool(graph_results)
+    relevant_vectors = []
+    for vr in vector_results:
+        score = vr.get("score", 0)
+        if score < _VECTOR_RELEVANCE_THRESHOLD:
+            continue
+        # When graph results exist, only include vector chunks that mention
+        # at least one entity from the question/graph — prevents irrelevant noise
+        if has_graph and all_entity_names:
+            text = vr.get("text_excerpt", "")
+            if not _vector_mentions_entity(text, all_entity_names):
+                continue
+        relevant_vectors.append(vr)
 
     # Add vector results (deduplicate by document+page, fall back to chunk)
     for vr in relevant_vectors:
@@ -604,7 +704,14 @@ async def _merge_results(
 
     # Format text representations for LLM (use filtered vectors only)
     graph_text = _format_graph_results(graph_results)
-    vector_text = _format_vector_results(relevant_vectors)
+
+    # When graph results contain relationships, suppress irrelevant vector text
+    # to prevent the LLM from getting distracted by document-level noise
+    graph_has_relationships = any(r.get("relationship_type") for r in graph_results)
+    if graph_has_relationships and not relevant_vectors:
+        vector_text = "No additional vector results (graph results are sufficient)."
+    else:
+        vector_text = _format_vector_results(relevant_vectors)
 
     return citations, entities_mentioned, graph_text, vector_text
 
@@ -642,7 +749,21 @@ def _format_graph_results(results: list[dict]) -> str:
     entity_lines = [f"Entity: {v}" for v in entities.values()]
     rel_lines = [f"Relationship: {r}" for r in relationships]
 
-    return "\n".join(entity_lines + rel_lines + lines)
+    # Build a prominent connection chain summary when relationships exist
+    sections = []
+    if relationships:
+        sections.append("=== CONNECTION CHAIN (verified from knowledge graph) ===")
+        sections.extend(rel_lines)
+        sections.append("=== ENTITIES ===")
+        sections.extend(entity_lines)
+    else:
+        sections.extend(entity_lines)
+
+    if lines:
+        sections.append("=== PROVENANCE ===")
+        sections.extend(lines)
+
+    return "\n".join(sections)
 
 
 def _format_vector_results(results: list[dict]) -> str:

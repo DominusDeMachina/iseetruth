@@ -40,7 +40,7 @@ services:
       - "6333:6333"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -66,13 +66,92 @@ services:
 
   ollama:
     image: ollama/ollama:latest
-    profiles:
-      - ollama
     ports:
       - "11434:11434"
     restart: unless-stopped
     volumes:
       - ollama-models:/root/.ollama
+    networks:
+      - osint-network
+
+  ollama-embedding:
+    image: ollama/ollama:latest
+    ports:
+      - "11435:11434"
+    restart: unless-stopped
+    volumes:
+      - ollama-embedding-models:/root/.ollama
+    networks:
+      - osint-network
+
+  web:
+    image: node:20-alpine
+    working_dir: /app
+    command: ["sh", "-c", "corepack enable pnpm && pnpm install && pnpm --filter web dev --host 0.0.0.0"]
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../package.json:/app/package.json
+      - ../pnpm-workspace.yaml:/app/pnpm-workspace.yaml
+      - ../pnpm-lock.yaml:/app/pnpm-lock.yaml
+      - ../apps/web:/app/apps/web
+      - web-node-modules:/app/node_modules
+      - web-app-node-modules:/app/apps/web/node_modules
+    environment:
+      - API_PROXY_TARGET=http://api:8000
+    restart: unless-stopped
+    networks:
+      - osint-network
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/app.Dockerfile
+    env_file: ../.env
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../apps/api:/app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      ollama-embedding:
+        condition: service_started
+    networks:
+      - osint-network
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/app.Dockerfile
+    env_file: ../.env
+    command: ["uv", "run", "celery", "-A", "app.worker.celery_app", "worker", "--loglevel=debug"]
+    volumes:
+      - ../apps/api:/app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      ollama-embedding:
+        condition: service_started
     networks:
       - osint-network
 
@@ -82,6 +161,9 @@ volumes:
   qdrant-data:
   redis-data:
   ollama-models:
+  ollama-embedding-models:
+  web-node-modules:
+  web-app-node-modules:
 
 networks:
   osint-network:

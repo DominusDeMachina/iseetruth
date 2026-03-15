@@ -82,7 +82,8 @@ def process_document_task(document_id: str, investigation_id: str) -> None:
                 return
 
             # Warn if embedding model is absent — Stage 4 will complete with 0 embeddings
-            if not ollama_client.check_available(model=EMBEDDING_MODEL):
+            embedding_check_client = OllamaClient(settings.ollama_embedding_url)
+            if not embedding_check_client.check_available(model=EMBEDDING_MODEL):
                 logger.warning(
                     "Embedding model unavailable — Stage 4 will produce 0 embeddings",
                     model=EMBEDDING_MODEL,
@@ -264,7 +265,7 @@ def process_document_task(document_id: str, investigation_id: str) -> None:
                     },
                 )
 
-                embedding_client = OllamaEmbeddingClient(settings.ollama_base_url)
+                embedding_client = OllamaEmbeddingClient(settings.ollama_embedding_url)
                 embedding_service = EmbeddingService(embedding_client, qdrant_client)
                 emb_summary = embedding_service.embed_chunks(
                     chunks, investigation_id=document.investigation_id

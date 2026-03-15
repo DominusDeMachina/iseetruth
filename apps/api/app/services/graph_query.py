@@ -224,8 +224,8 @@ async def _fetch_hub_nodes(
             f"MATCH (e:{label_expr} {{investigation_id: $investigation_id}})"
             "-[:MENTIONED_IN]->(d:Document {id: $document_id, investigation_id: $investigation_id}) "
             "WITH DISTINCT e "
-            "OPTIONAL MATCH (e)-[r:WORKS_FOR|KNOWS|LOCATED_AT]-"
-            "({investigation_id: $investigation_id}) "
+            "OPTIONAL MATCH (e)-[r]-({investigation_id: $investigation_id}) "
+            "WHERE type(r) <> 'MENTIONED_IN' "
             "WITH e, labels(e)[0] AS type, COUNT(r) AS relationship_count "
             "ORDER BY relationship_count DESC "
             "SKIP $offset LIMIT $limit "
@@ -235,8 +235,8 @@ async def _fetch_hub_nodes(
     else:
         query = (
             f"MATCH (e:{label_expr} {{investigation_id: $investigation_id}}) "
-            "OPTIONAL MATCH (e)-[r:WORKS_FOR|KNOWS|LOCATED_AT]-"
-            "({investigation_id: $investigation_id}) "
+            "OPTIONAL MATCH (e)-[r]-({investigation_id: $investigation_id}) "
+            "WHERE type(r) <> 'MENTIONED_IN' "
             "WITH e, labels(e)[0] AS type, COUNT(r) AS relationship_count "
             "ORDER BY relationship_count DESC "
             "SKIP $offset LIMIT $limit "
@@ -252,9 +252,10 @@ async def _fetch_edges_between(tx, investigation_id: str, node_ids: list[str]):
     """Fetch directed edges between a set of node IDs."""
     result = await tx.run(
         "MATCH (src:Person|Organization|Location {investigation_id: $investigation_id})"
-        "-[r:WORKS_FOR|KNOWS|LOCATED_AT]->"
+        "-[r]->"
         "(tgt:Person|Organization|Location {investigation_id: $investigation_id}) "
         "WHERE src.id IN $node_ids AND tgt.id IN $node_ids "
+        "AND type(r) <> 'MENTIONED_IN' "
         "RETURN src.id AS source, tgt.id AS target, "
         "type(r) AS type, r.confidence_score AS confidence_score",
         investigation_id=investigation_id,
@@ -279,15 +280,15 @@ async def _fetch_total_counts(
             f"MATCH (e:{label_expr} {{investigation_id: $investigation_id}})"
             "-[:MENTIONED_IN]->(d:Document {id: $document_id, investigation_id: $investigation_id}) "
             "WITH DISTINCT e "
-            "OPTIONAL MATCH (e)-[r:WORKS_FOR|KNOWS|LOCATED_AT]-"
-            "({investigation_id: $investigation_id}) "
+            "OPTIONAL MATCH (e)-[r]-({investigation_id: $investigation_id}) "
+            "WHERE type(r) <> 'MENTIONED_IN' "
             "RETURN COUNT(DISTINCT e) AS total_nodes, COUNT(DISTINCT r) AS total_edges"
         )
     else:
         query = (
             f"MATCH (e:{label_expr} {{investigation_id: $investigation_id}}) "
-            "OPTIONAL MATCH (e)-[r:WORKS_FOR|KNOWS|LOCATED_AT]-"
-            "({investigation_id: $investigation_id}) "
+            "OPTIONAL MATCH (e)-[r]-({investigation_id: $investigation_id}) "
+            "WHERE type(r) <> 'MENTIONED_IN' "
             "RETURN COUNT(DISTINCT e) AS total_nodes, COUNT(DISTINCT r) AS total_edges"
         )
 
@@ -303,8 +304,8 @@ async def _fetch_entity_exists(tx, entity_id: str, investigation_id: str):
     result = await tx.run(
         "MATCH (e:Person|Organization|Location "
         "{id: $entity_id, investigation_id: $investigation_id}) "
-        "OPTIONAL MATCH (e)-[r:WORKS_FOR|KNOWS|LOCATED_AT]-"
-        "({investigation_id: $investigation_id}) "
+        "OPTIONAL MATCH (e)-[r]-({investigation_id: $investigation_id}) "
+        "WHERE type(r) <> 'MENTIONED_IN' "
         "WITH e, labels(e)[0] AS type, COUNT(r) AS relationship_count "
         "RETURN e.id AS id, e.name AS name, type, "
         "e.confidence_score AS confidence_score, relationship_count",
@@ -319,12 +320,14 @@ async def _fetch_neighbors(tx, entity_id: str, investigation_id: str):
     result = await tx.run(
         "MATCH (e:Person|Organization|Location "
         "{id: $entity_id, investigation_id: $investigation_id})"
-        "-[r:WORKS_FOR|KNOWS|LOCATED_AT]-"
+        "-[r]-"
         "(neighbor:Person|Organization|Location "
         "{investigation_id: $investigation_id}) "
+        "WHERE type(r) <> 'MENTIONED_IN' "
         "WITH neighbor, r, labels(neighbor)[0] AS type "
-        "OPTIONAL MATCH (neighbor)-[r2:WORKS_FOR|KNOWS|LOCATED_AT]-"
+        "OPTIONAL MATCH (neighbor)-[r2]-"
         "({investigation_id: $investigation_id}) "
+        "WHERE type(r2) <> 'MENTIONED_IN' "
         "RETURN neighbor.id AS id, neighbor.name AS name, type, "
         "neighbor.confidence_score AS confidence_score, "
         "COUNT(r2) AS relationship_count, "

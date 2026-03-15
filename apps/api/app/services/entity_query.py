@@ -217,7 +217,8 @@ async def _fetch_relationships(tx, entity_id: str, investigation_id: str):
     """Fetch outgoing entity-to-entity relationships."""
     result = await tx.run(
         "MATCH (e {id: $entity_id, investigation_id: $inv_id})"
-        "-[r:WORKS_FOR|KNOWS|LOCATED_AT]->(t {investigation_id: $inv_id}) "
+        "-[r]->(t {investigation_id: $inv_id}) "
+        "WHERE type(r) <> 'MENTIONED_IN' "
         "RETURN type(r) AS relation_type, t.id AS target_id, t.name AS target_name, "
         "labels(t)[0] AS target_type, r.confidence_score AS confidence_score",
         entity_id=entity_id,

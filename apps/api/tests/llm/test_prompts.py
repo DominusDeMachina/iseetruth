@@ -12,7 +12,6 @@ from app.llm.schemas import (
     EntityExtractionResponse,
     ExtractedEntity,
     ExtractedRelationship,
-    RelationType,
     RelationshipExtractionResponse,
 )
 
@@ -122,11 +121,12 @@ class TestRelationshipExtractionPrompts:
         assert "John Smith" in result
         assert "Acme Corp" in result
 
-    def test_system_prompt_mentions_all_relation_types(self):
+    def test_system_prompt_mentions_common_relation_types(self):
         prompt = RELATIONSHIP_EXTRACTION_SYSTEM_PROMPT
         assert "WORKS_FOR" in prompt
         assert "KNOWS" in prompt
         assert "LOCATED_AT" in prompt
+        assert "UPPER_SNAKE_CASE" in prompt
 
 
 class TestRelationshipExtractionResponse:
@@ -144,26 +144,27 @@ class TestRelationshipExtractionResponse:
         response = RelationshipExtractionResponse(**data)
         assert len(response.relationships) == 1
         assert response.relationships[0].source_entity_name == "John Smith"
-        assert response.relationships[0].relation_type == RelationType.WORKS_FOR
+        assert response.relationships[0].relation_type == "WORKS_FOR"
         assert response.relationships[0].confidence == 0.9
 
     def test_empty_relationships_list(self):
         response = RelationshipExtractionResponse(relationships=[])
         assert response.relationships == []
 
-    def test_invalid_relation_type_rejected(self):
+    def test_any_relation_type_accepted(self):
+        """Dynamic relation types — any UPPER_SNAKE_CASE string is valid."""
         data = {
             "relationships": [
                 {
                     "source_entity_name": "A",
                     "target_entity_name": "B",
-                    "relation_type": "INVALID_TYPE",
+                    "relation_type": "FUNDED_BY",
                     "confidence": 0.5,
                 }
             ]
         }
-        with pytest.raises(Exception):
-            RelationshipExtractionResponse(**data)
+        response = RelationshipExtractionResponse(**data)
+        assert response.relationships[0].relation_type == "FUNDED_BY"
 
     def test_confidence_out_of_range_rejected(self):
         data = {
@@ -193,8 +194,8 @@ class TestRelationshipExtractionResponse:
         with pytest.raises(Exception):
             RelationshipExtractionResponse(**data)
 
-    def test_all_relation_types_valid(self):
-        for rel_type in ("WORKS_FOR", "KNOWS", "LOCATED_AT"):
+    def test_various_relation_types_valid(self):
+        for rel_type in ("WORKS_FOR", "KNOWS", "LOCATED_AT", "FUNDED_BY", "OWNS", "MEMBER_OF"):
             data = {
                 "relationships": [
                     {

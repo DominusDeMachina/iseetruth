@@ -16,6 +16,7 @@ from app.services.query import (
     _generate_followups,
     _merge_results,
     _resolve_provenance,
+    _sanitize_cypher,
     _search_graph,
     _search_vectors,
     _translate_question,
@@ -160,11 +161,56 @@ class TestFallbackTranslation:
         assert len(result.cypher_queries) >= 1
         assert "shortestPath" in result.cypher_queries[0]
 
-    def test_single_entity_generates_neighbor_query(self):
-        """Single entity → neighbor expansion Cypher query."""
+    def test_fallback_shortest_path_excludes_mentioned_in(self):
+        """Fallback shortestPath excludes MENTIONED_IN edges."""
+        result = _fallback_translation("Connection between Horvat and GreenBuild")
+        cypher = result.cypher_queries[0]
+        assert "MENTIONED_IN" in cypher
+        assert "NONE(" in cypher
+
+    def test_single_entity_excludes_mentioned_in(self):
+        """Single entity fallback excludes MENTIONED_IN."""
         result = _fallback_translation("Tell me about Horvat")
         assert len(result.cypher_queries) >= 1
-        assert "$investigation_id" in result.cypher_queries[0]
+        cypher = result.cypher_queries[0]
+        assert "$investigation_id" in cypher
+        assert "MENTIONED_IN" in cypher
+
+
+class TestSanitizeCypher:
+    def test_adds_mentioned_in_exclusion_to_unprotected_path(self):
+        """Untyped [*..5] without MENTIONED_IN exclusion gets a NONE filter added."""
+        cypher = (
+            "MATCH p = shortestPath((a)-[*..5]-(b)) "
+            "WHERE a.name = 'X' "
+            "RETURN p"
+        )
+        result = _sanitize_cypher(cypher)
+        assert "MENTIONED_IN" in result
+        assert "NONE(" in result
+
+    def test_preserves_query_with_existing_exclusion(self):
+        """Queries that already exclude MENTIONED_IN are left unchanged."""
+        cypher = (
+            "MATCH p = shortestPath((a)-[*..5]-(b)) "
+            "WHERE a.name = 'X' "
+            "AND NONE(r IN relationships(p) WHERE type(r) = 'MENTIONED_IN') "
+            "RETURN p"
+        )
+        result = _sanitize_cypher(cypher)
+        assert result == cypher
+
+    def test_no_variable_length_path_left_unchanged(self):
+        """Queries without variable-length paths are not modified."""
+        cypher = "MATCH (a)-[r]->(b) RETURN a, r, b"
+        result = _sanitize_cypher(cypher)
+        assert result == cypher
+
+    def test_adds_where_when_none_exists(self):
+        """If no WHERE clause, adds WHERE before RETURN."""
+        cypher = "MATCH p = shortestPath((a)-[*..3]-(b)) RETURN p"
+        result = _sanitize_cypher(cypher)
+        assert "WHERE NONE(" in result
 
 
 # ---------------------------------------------------------------------------
@@ -272,12 +318,12 @@ class TestMergeResults:
             }
         ]
         vector_results = [
-            {"chunk_id": "c1", "document_id": "d1", "page_start": 1, "page_end": 2, "text_excerpt": "Text 1", "score": 0.9},
-            {"chunk_id": "c2", "document_id": "d1", "page_start": 3, "page_end": 4, "text_excerpt": "Text 2", "score": 0.8},
+            {"chunk_id": "c1", "document_id": "d1", "page_start": 1, "page_end": 2, "text_excerpt": "Horvat report text 1", "score": 0.9},
+            {"chunk_id": "c2", "document_id": "d1", "page_start": 3, "page_end": 4, "text_excerpt": "Horvat additional details", "score": 0.8},
         ]
 
         citations, entities, graph_text, vector_text = await _merge_results(
-            graph_results, vector_results, mock_db_session
+            graph_results, vector_results, mock_db_session, entity_names=["Horvat"]
         )
 
         # c1 appears in both but should only be counted once
@@ -321,6 +367,49 @@ class TestMergeResults:
         names = {e.name for e in entities}
         assert "Horvat" in names
         assert "GreenBuild" in names
+
+
+class TestVectorEntityFiltering:
+    @pytest.mark.asyncio
+    async def test_irrelevant_vectors_filtered_when_graph_exists(self, mock_db_session):
+        """Vector results not mentioning any entity are dropped when graph results exist."""
+        graph_results = [
+            {
+                "entity_id": "e1", "id": "e1", "name": "Horvat", "type": "Person",
+                "provenance": [
+                    {"chunk_id": "c1", "document_id": "d1", "page_start": 1, "page_end": 1, "text_excerpt": "Horvat info"},
+                ],
+            }
+        ]
+        vector_results = [
+            {"chunk_id": "c2", "document_id": "d2", "page_start": 1, "page_end": 2,
+             "text_excerpt": "Completely unrelated URL analysis text", "score": 0.8},
+            {"chunk_id": "c3", "document_id": "d2", "page_start": 3, "page_end": 4,
+             "text_excerpt": "Horvat met with representatives", "score": 0.7},
+        ]
+
+        citations, _, _, _ = await _merge_results(
+            graph_results, vector_results, mock_db_session, entity_names=["Horvat"]
+        )
+
+        chunk_ids = [c.chunk_id for c in citations]
+        assert "c2" not in chunk_ids  # irrelevant vector filtered out
+        assert "c3" in chunk_ids      # relevant vector kept
+
+    @pytest.mark.asyncio
+    async def test_all_vectors_pass_when_no_graph_results(self, mock_db_session):
+        """Without graph results, all above-threshold vectors are kept."""
+        vector_results = [
+            {"chunk_id": "c1", "document_id": "d1", "page_start": 1, "page_end": 2,
+             "text_excerpt": "Any text at all", "score": 0.8},
+        ]
+
+        citations, _, _, _ = await _merge_results(
+            [], vector_results, mock_db_session
+        )
+
+        assert len(citations) == 1
+        assert citations[0].chunk_id == "c1"
 
 
 # ---------------------------------------------------------------------------

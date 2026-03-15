@@ -1,4 +1,5 @@
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowLeft, RefreshCw } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { useHealthStatus } from "@/hooks/useHealthStatus";
 import { ServiceStatusCard } from "./ServiceStatusCard";
 import { OllamaStatusCard } from "./OllamaStatusCard";
@@ -103,6 +104,13 @@ export function SystemStatusPage() {
 
   return (
     <div className="max-w-3xl mx-auto">
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] mb-4"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Investigations
+      </Link>
       <h2 className="text-2xl font-semibold text-[var(--text-primary)] mb-6">
         System Status
       </h2>

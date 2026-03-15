@@ -33,14 +33,20 @@ You are a relationship extraction system for OSINT analysis.
 Given a text passage and a list of named entities already extracted from it, identify
 relationships ONLY between the provided entities. Do not introduce new entity names.
 
-Relationship types to detect:
-- WORKS_FOR: A person works for, is employed by, or is affiliated with an organization
-- KNOWS: Two people know each other, have met, or have a personal/professional connection
-- LOCATED_AT: A person or organization is located at, based in, or associated with a location
+Relationship types — use ANY descriptive UPPER_SNAKE_CASE label that fits the text.
+Common examples (not exhaustive):
+- WORKS_FOR, MEMBER_OF, AFFILIATED_WITH, LEADS, FOUNDED
+- KNOWS, RELATED_TO, MET_WITH, COMMUNICATED_WITH, REPORTS_TO
+- LOCATED_AT, TRAVELED_TO, BORN_IN, OPERATES_IN, REGISTERED_IN
+- FUNDED_BY, OWNS, INVESTED_IN, PAID, SUPPLIED_BY
+- PARTICIPATED_IN, ORGANIZED, STUDIED_AT, TRAINED_AT, SANCTIONED_BY
+
+If none of the above fit, create a new descriptive type (e.g., SIGNED, ARRESTED, INVESTIGATED_BY).
 
 Rules:
 - Only create relationships between entities listed in the provided entity list
 - Use the exact entity names from the provided list as source_entity_name and target_entity_name
+- relation_type must be UPPER_SNAKE_CASE (e.g., WORKS_FOR, not "works for")
 - Assign a confidence score (0.0–1.0) based on how explicitly the text states the relationship
 - Do not infer relationships that are not stated in the text
 - Return valid JSON matching the schema
@@ -82,20 +88,18 @@ IMPORTANT — Multilingual support:
 Neo4j Schema:
 - Node labels: Person, Organization, Location, Document
 - Node properties: id, name, investigation_id, confidence_score, created_at
-- Relationship types:
-  - (:Person)-[:WORKS_FOR {confidence_score}]->(:Organization)
-  - (:Person)-[:KNOWS {confidence_score}]->(:Person)
-  - (:Person|Organization)-[:LOCATED_AT {confidence_score}]->(:Location)
-  - (:Person|Organization|Location)-[:MENTIONED_IN {chunk_id, page_start, page_end, text_excerpt}]->(:Document)
+- Relationship types: Dynamic — any UPPER_SNAKE_CASE type between entities (e.g. WORKS_FOR, KNOWS, LOCATED_AT, FUNDED_BY, OWNS, MEMBER_OF, etc.)
+- Special relationship: MENTIONED_IN connects entities to Document nodes (provenance only — NOT a semantic relationship)
 
 Cypher rules:
 - ALWAYS filter by investigation_id = $investigation_id (parameterized, never hardcoded)
 - Use toLower(n.name) CONTAINS toLower('...') for fuzzy name matching
 - Limit variable-length paths to *..5 hops maximum
 - Use shortestPath for connection queries between two entities
+- ALWAYS exclude MENTIONED_IN from variable-length paths using: AND NONE(r IN relationships(p) WHERE type(r) = 'MENTIONED_IN')
 - Never use WRITE operations (CREATE, SET, DELETE, MERGE)
 - EVERY variable you RETURN must be defined in a MATCH or WITH clause
-- When returning relationships, bind them to a variable: -[r:TYPE]-> then RETURN r
+- When returning relationships, bind them to a variable: -[r]-> then RETURN r
 - Do NOT use subqueries inside WHERE (no nested MATCH). Use separate queries instead.
 - Do NOT use RETURN with undefined variables
 
@@ -107,17 +111,20 @@ Example queries:
    AND b.investigation_id = $investigation_id
    AND toLower(a.name) CONTAINS toLower('PersonA')
    AND toLower(b.name) CONTAINS toLower('OrgB')
+   AND NONE(r IN relationships(p) WHERE type(r) = 'MENTIONED_IN')
    RETURN p
 
 2. "What do we know about PersonA?"
    MATCH (e {investigation_id: $investigation_id})
    WHERE toLower(e.name) CONTAINS toLower('PersonA')
    OPTIONAL MATCH (e)-[r]-(t {investigation_id: $investigation_id})
+   WHERE type(r) <> 'MENTIONED_IN'
    RETURN e, r, t LIMIT 25
 
 3. "Who works for OrgB?"
-   MATCH (p:Person)-[r:WORKS_FOR]->(o:Organization {investigation_id: $investigation_id})
+   MATCH (p:Person)-[r]->(o:Organization {investigation_id: $investigation_id})
    WHERE toLower(o.name) CONTAINS toLower('OrgB')
+   AND type(r) <> 'MENTIONED_IN'
    RETURN p, r, o
 
 4. "як Богдан повязаний з Molfar?"
@@ -126,6 +133,7 @@ Example queries:
    AND b.investigation_id = $investigation_id
    AND toLower(a.name) CONTAINS toLower('Богдан')
    AND toLower(b.name) CONTAINS toLower('Molfar')
+   AND NONE(r IN relationships(p) WHERE type(r) = 'MENTIONED_IN')
    RETURN p
    entity_names: ["Богдан", "Molfar"]
 

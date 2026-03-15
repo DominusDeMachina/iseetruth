@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     # Ollama
     ollama_base_url: str = "http://ollama:11434"
+    ollama_embedding_url: str = "http://ollama-embedding:11434"
 
     # FastAPI
     api_host: str = "0.0.0.0"

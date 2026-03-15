@@ -20,9 +20,11 @@ from app.schemas.health import (
     StatusEnum,
 )
 
-REQUIRED_MODELS = ["qwen3.5:9b", "qwen3-embedding:8b"]
+CHAT_MODELS = ["qwen3.5:9b"]
+EMBEDDING_MODELS = ["qwen3-embedding:8b"]
+REQUIRED_MODELS = CHAT_MODELS + EMBEDDING_MODELS
 CHECK_TIMEOUT = 5.0  # seconds
-MIN_RAM_GB = 16
+MIN_RAM_GB = 12
 
 
 class HealthService:
@@ -92,47 +94,55 @@ class HealthService:
                 detail=f"Connection failed: {exc}",
             )
 
+    async def _check_ollama_instance(self, base_url: str, required: list[str]) -> tuple[set[str], list[ModelInfo]]:
+        """Query a single Ollama instance and return (downloaded_set, model_infos)."""
+        async with httpx.AsyncClient(timeout=CHECK_TIMEOUT) as http:
+            resp = await http.get(f"{base_url}/api/tags")
+            resp.raise_for_status()
+            data = resp.json()
+        downloaded = {m["name"] for m in data.get("models", [])}
+        infos = [ModelInfo(name=name, available=name in downloaded) for name in required]
+        return downloaded, infos
+
     async def check_ollama(self) -> OllamaStatus:
         settings = get_settings()
-        base_url = settings.ollama_base_url
+        models: list[ModelInfo] = []
+        chat_failed = False
+        emb_failed = False
+
         try:
-            async with httpx.AsyncClient(timeout=CHECK_TIMEOUT) as http:
-                resp = await http.get(f"{base_url}/api/tags")
-                resp.raise_for_status()
-                data = resp.json()
-
-            downloaded = {m["name"] for m in data.get("models", [])}
-            models = [
-                ModelInfo(name=name, available=name in downloaded)
-                for name in REQUIRED_MODELS
-            ]
-            all_ready = all(m.available for m in models)
-
-            if all_ready:
-                return OllamaStatus(
-                    status=StatusEnum.healthy,
-                    detail="Running, all models ready",
-                    models_ready=True,
-                    models=models,
-                )
-            missing = [m.name for m in models if not m.available]
-            return OllamaStatus(
-                status=StatusEnum.unhealthy,
-                detail=f"Models not ready: {', '.join(missing)}",
-                models_ready=False,
-                models=models,
-            )
+            _, chat_infos = await self._check_ollama_instance(settings.ollama_base_url, CHAT_MODELS)
+            models.extend(chat_infos)
         except Exception as exc:
-            logger.warning("Ollama health check failed", error=str(exc))
-            models = [
-                ModelInfo(name=name, available=False) for name in REQUIRED_MODELS
-            ]
+            chat_failed = True
+            logger.warning("Ollama chat instance health check failed", error=str(exc))
+            models.extend([ModelInfo(name=name, available=False) for name in CHAT_MODELS])
+
+        try:
+            _, emb_infos = await self._check_ollama_instance(settings.ollama_embedding_url, EMBEDDING_MODELS)
+            models.extend(emb_infos)
+        except Exception as exc:
+            emb_failed = True
+            logger.warning("Ollama embedding instance health check failed", error=str(exc))
+            models.extend([ModelInfo(name=name, available=False) for name in EMBEDDING_MODELS])
+
+        all_ready = all(m.available for m in models)
+        both_failed = chat_failed and emb_failed
+
+        if all_ready:
             return OllamaStatus(
-                status=StatusEnum.unavailable,
-                detail=f"Connection failed: {exc}",
-                models_ready=False,
+                status=StatusEnum.healthy,
+                detail="Running, all models ready",
+                models_ready=True,
                 models=models,
             )
+        missing = [m.name for m in models if not m.available]
+        return OllamaStatus(
+            status=StatusEnum.unavailable if both_failed else StatusEnum.unhealthy,
+            detail=f"Connection failed" if both_failed else f"Models not ready: {', '.join(missing)}",
+            models_ready=False,
+            models=models,
+        )
 
     def check_hardware(self) -> list[str]:
         warnings: list[str] = []
