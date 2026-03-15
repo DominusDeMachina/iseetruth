@@ -3,7 +3,12 @@ import { AlertTriangle, Eye, FileText, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteDocumentDialog } from "./DeleteDocumentDialog";
-import type { DocumentResponse } from "@/hooks/useDocuments";
+import type { DocumentWithProgress } from "@/hooks/useDocuments";
+import {
+  PROCESSING_STAGES,
+  statusLabels,
+  statusStyles,
+} from "@/lib/document-constants";
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -19,28 +24,24 @@ function formatDate(dateString: string): string {
   });
 }
 
-const statusStyles: Record<string, string> = {
-  queued: "bg-[var(--status-info)]/15 text-[var(--status-info)] border-[var(--status-info)]/30",
-  extracting_text: "bg-[var(--status-info)]/15 text-[var(--status-info)] border-[var(--status-info)]/30",
-  complete: "bg-[var(--status-success)]/15 text-[var(--status-success)] border-[var(--status-success)]/30",
-  failed: "bg-[var(--status-error)]/15 text-[var(--status-error)] border-[var(--status-error)]/30",
-};
-
-const statusLabels: Record<string, string> = {
-  queued: "Queued",
-  extracting_text: "Extracting Text",
-  complete: "Complete",
-  failed: "Failed",
-};
-
 const qualityStyles: Record<string, string> = {
   high: "bg-[var(--status-success)]/15 text-[var(--status-success)] border-[var(--status-success)]/30",
   medium: "bg-[var(--status-warning)]/15 text-[var(--status-warning)] border-[var(--status-warning)]/30 border-dashed",
   low: "bg-[var(--status-warning)]/15 text-[var(--status-warning)] border-[var(--status-warning)]/30 border-dotted",
 };
 
+function stageIndex(status: string): number {
+  return PROCESSING_STAGES.indexOf(
+    status as (typeof PROCESSING_STAGES)[number],
+  );
+}
+
+function isProcessing(status: string): boolean {
+  return stageIndex(status) >= 0;
+}
+
 interface DocumentCardProps {
-  document: DocumentResponse;
+  document: DocumentWithProgress;
   onDelete: (id: string) => void;
   onViewText?: (id: string) => void;
   isDeleting?: boolean;
@@ -53,6 +54,8 @@ export function DocumentCard({
   isDeleting = false,
 }: DocumentCardProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const processing = isProcessing(document.status);
+  const currentStage = stageIndex(document.status);
 
   return (
     <>
@@ -71,7 +74,8 @@ export function DocumentCard({
               <>
                 <span>&middot;</span>
                 <span>
-                  {document.page_count} {document.page_count === 1 ? "page" : "pages"}
+                  {document.page_count}{" "}
+                  {document.page_count === 1 ? "page" : "pages"}
                 </span>
               </>
             )}
@@ -81,14 +85,47 @@ export function DocumentCard({
                 <span>{document.entity_count} entities</span>
               </>
             )}
+            {document._chunksDone != null &&
+              document._chunkCount != null &&
+              document._chunkCount > 0 && (
+                <>
+                  <span>&middot;</span>
+                  <span>
+                    {document._chunksDone}/{document._chunkCount} chunks
+                  </span>
+                </>
+              )}
           </div>
         </div>
+
+        {processing && (
+          <div className="flex items-center gap-1" title={statusLabels[document.status]}>
+            {PROCESSING_STAGES.map((stage, i) => {
+              const isDone = i < currentStage;
+              const isActive = i === currentStage;
+              return (
+                <div
+                  key={stage}
+                  className={`size-1.5 rounded-full transition-colors ${
+                    isDone
+                      ? "bg-[var(--status-success)]"
+                      : isActive
+                        ? "animate-pulse bg-[var(--status-info)]"
+                        : "bg-[var(--bg-hover)]"
+                  }`}
+                  title={statusLabels[stage]}
+                />
+              );
+            })}
+          </div>
+        )}
 
         <Badge
           variant="outline"
           className={statusStyles[document.status] ?? ""}
         >
-          {statusLabels[document.status] ?? document.status.charAt(0).toUpperCase() + document.status.slice(1)}
+          {statusLabels[document.status] ??
+            document.status.charAt(0).toUpperCase() + document.status.slice(1)}
         </Badge>
 
         {document.extraction_quality && (
@@ -96,8 +133,12 @@ export function DocumentCard({
             variant="outline"
             className={qualityStyles[document.extraction_quality] ?? ""}
           >
-            {document.extraction_quality === "low" && <AlertTriangle className="size-3 mr-1" />}
-            {document.extraction_quality.charAt(0).toUpperCase() + document.extraction_quality.slice(1)} confidence
+            {document.extraction_quality === "low" && (
+              <AlertTriangle className="size-3 mr-1" />
+            )}
+            {document.extraction_quality.charAt(0).toUpperCase() +
+              document.extraction_quality.slice(1)}{" "}
+            confidence
           </Badge>
         )}
 

@@ -1,8 +1,8 @@
 import { DocumentCard } from "./DocumentCard";
-import type { DocumentResponse } from "@/hooks/useDocuments";
+import type { DocumentWithProgress } from "@/hooks/useDocuments";
 
 interface DocumentListProps {
-  documents: DocumentResponse[];
+  documents: DocumentWithProgress[];
   isLoading: boolean;
   onDeleteDocument: (id: string) => void;
   onViewText?: (id: string) => void;

@@ -4,6 +4,13 @@ import type { components } from "@/lib/api-types.generated";
 
 export type DocumentResponse = components["schemas"]["DocumentResponse"];
 export type DocumentListResponse = components["schemas"]["DocumentListResponse"];
+
+/** DocumentResponse + transient SSE progress fields (not from the API) */
+export type DocumentWithProgress = DocumentResponse & {
+  _progress?: number;
+  _chunkCount?: number;
+  _chunksDone?: number;
+};
 export type DocumentTextResponse = components["schemas"]["DocumentTextResponse"];
 export type UploadDocumentsResponse =
   components["schemas"]["UploadDocumentsResponse"];

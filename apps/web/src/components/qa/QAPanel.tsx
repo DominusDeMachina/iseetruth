@@ -12,6 +12,9 @@ interface QAPanelProps {
   prefillQuestion?: string;
   onQueryStart?: () => void;
   onConversationUpdate?: (entries: ConversationEntry[]) => void;
+  /** Disable the input (e.g. while documents are still processing). */
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 export function QAPanel({
@@ -21,6 +24,8 @@ export function QAPanel({
   prefillQuestion,
   onQueryStart,
   onConversationUpdate,
+  disabled = false,
+  disabledReason,
 }: QAPanelProps) {
   const {
     queryStatus,
@@ -106,6 +111,8 @@ export function QAPanel({
         onSubmit={handleSubmit}
         status={queryStatus}
         prefillQuestion={prefillQuestion}
+        disabled={disabled}
+        disabledReason={disabledReason}
       />
     </div>
   );

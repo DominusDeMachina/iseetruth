@@ -64,25 +64,10 @@ services:
     networks:
       - osint-network
 
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    restart: unless-stopped
-    volumes:
-      - ollama-models:/root/.ollama
-    networks:
-      - osint-network
-
-  ollama-embedding:
-    image: ollama/ollama:latest
-    ports:
-      - "11435:11434"
-    restart: unless-stopped
-    volumes:
-      - ollama-embedding-models:/root/.ollama
-    networks:
-      - osint-network
+  # Ollama runs natively on macOS for Metal GPU acceleration.
+  # Docker Linux containers cannot access Apple Metal.
+  # Start Ollama locally: `ollama serve`
+  # The API/worker connect via host.docker.internal (see extra_hosts below).
 
   web:
     image: node:20-alpine
@@ -113,6 +98,11 @@ services:
       - "8000:8000"
     volumes:
       - ../apps/api:/app
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_EMBEDDING_URL=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     depends_on:
       postgres:
@@ -123,10 +113,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      ollama:
-        condition: service_started
-      ollama-embedding:
-        condition: service_started
     networks:
       - osint-network
 
@@ -138,6 +124,11 @@ services:
     command: ["uv", "run", "celery", "-A", "app.worker.celery_app", "worker", "--loglevel=debug"]
     volumes:
       - ../apps/api:/app
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_EMBEDDING_URL=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     depends_on:
       postgres:
@@ -148,10 +139,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      ollama:
-        condition: service_started
-      ollama-embedding:
-        condition: service_started
     networks:
       - osint-network
 
@@ -160,8 +147,6 @@ volumes:
   neo4j-data:
   qdrant-data:
   redis-data:
-  ollama-models:
-  ollama-embedding-models:
   web-node-modules:
   web-app-node-modules:
 

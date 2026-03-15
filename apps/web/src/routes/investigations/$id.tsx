@@ -8,6 +8,7 @@ import {
   useDeleteDocument,
 } from "@/hooks/useDocuments";
 import { useSSE } from "@/hooks/useSSE";
+import { ACTIVE_STATUSES, statusLabels } from "@/lib/document-constants";
 import { useEntities } from "@/hooks/useEntities";
 import { DocumentUploadZone } from "@/components/investigation/DocumentUploadZone";
 import { DocumentList } from "@/components/investigation/DocumentList";
@@ -52,17 +53,16 @@ function InvestigationDetail() {
   const [citationNotFound, setCitationNotFound] = useState(false);
   const conversationRef = useRef<ConversationEntry[]>([]);
 
-  const { data: entitiesData } = useEntities(id);
-
   const documents = documentsData?.items ?? [];
-  const hasCompleted = documents.some((d) => d.status === "complete");
-  const hasProcessing = documents.some(
-    (d) => d.status === "queued" || d.status === "extracting_text",
-  );
+  const hasProcessing = documents.some((d) => ACTIVE_STATUSES.has(d.status));
+  const activeDoc = documents.find((d) => ACTIVE_STATUSES.has(d.status));
+  const activeStageLabel = activeDoc ? (statusLabels[activeDoc.status] ?? activeDoc.status) : undefined;
+
+  const { data: entitiesData } = useEntities(id, undefined, hasProcessing);
   // Connect SSE when upload starts (not after it completes) so the connection
   // is established before Celery workers publish processing events
   const sseEnabled = hasProcessing || uploadMutation.isPending;
-  const { isConnected, connectionError } = useSSE(id, sseEnabled);
+  const { isConnected, connectionError, discoveredEntities } = useSSE(id, sseEnabled);
 
   const handleConversationUpdate = useCallback(
     (entries: ConversationEntry[]) => {
@@ -146,7 +146,7 @@ function InvestigationDetail() {
     );
   }
 
-  const hasEntities = hasCompleted && (entitiesData?.items?.length ?? 0) > 0;
+  const hasEntities = (entitiesData?.items?.length ?? 0) > 0;
 
   const documentManagementContent = (
     <div className="flex flex-col gap-6 overflow-y-auto h-full p-1">
@@ -162,10 +162,12 @@ function InvestigationDetail() {
           investigationName={investigation.name}
           isConnected={isConnected}
           connectionError={connectionError}
+          discoveredEntities={discoveredEntities}
+          extractedEntities={entitiesData?.items}
         />
       )}
 
-      {hasCompleted && entitiesData?.summary && (
+      {entitiesData?.summary && (
         <EntitySummaryBar summary={entitiesData.summary} />
       )}
 
@@ -215,11 +217,17 @@ function InvestigationDetail() {
         </div>
         <button
           onClick={() => setDocsDialogOpen(true)}
-          className="shrink-0 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          className="relative shrink-0 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
           title="Manage documents"
           aria-label="Manage documents"
         >
           <FileText className="size-4" />
+          {hasProcessing && (
+            <span
+              className="absolute -top-1 -right-1 size-2.5 rounded-full bg-[var(--status-info)] animate-pulse"
+              title={activeStageLabel}
+            />
+          )}
         </button>
       </div>
     );
@@ -237,6 +245,8 @@ function InvestigationDetail() {
                 prefillQuestion={prefillQuestion}
                 onQueryStart={() => setHighlightEntities([])}
                 onConversationUpdate={handleConversationUpdate}
+                disabled={hasProcessing}
+                disabledReason="Documents are still processing..."
               />
             }
             right={
@@ -334,10 +344,12 @@ function InvestigationDetail() {
           investigationName={investigation.name}
           isConnected={isConnected}
           connectionError={connectionError}
+          discoveredEntities={discoveredEntities}
+          extractedEntities={entitiesData?.items}
         />
       )}
 
-      {hasCompleted && entitiesData?.summary && (
+      {entitiesData?.summary && (
         <EntitySummaryBar summary={entitiesData.summary} />
       )}
 

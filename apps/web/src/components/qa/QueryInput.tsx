@@ -7,20 +7,25 @@ interface QueryInputProps {
   onSubmit: (question: string) => void;
   status: QueryStatus;
   prefillQuestion?: string;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 export function QueryInput({
   onSubmit,
   status,
   prefillQuestion,
+  disabled = false,
+  disabledReason,
 }: QueryInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const isDisabled =
+  const isBusy =
     status === "translating" ||
     status === "searching" ||
     status === "streaming";
+  const isDisabled = isBusy || disabled;
 
   // Auto-resize textarea
   const resize = useCallback(() => {
@@ -66,7 +71,7 @@ export function QueryInput({
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
         disabled={isDisabled}
-        placeholder="Ask a question about your investigation..."
+        placeholder={disabled && disabledReason ? disabledReason : "Ask a question about your investigation..."}
         aria-label="Ask a question about your investigation"
         rows={1}
         className="flex-1 resize-none rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-3 py-2 text-[15px] leading-relaxed text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--border-strong)] focus:outline-none disabled:opacity-50"

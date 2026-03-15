@@ -214,10 +214,23 @@ def process_document_task(document_id: str, investigation_id: str) -> None:
                         },
                     )
 
+                def on_extraction_progress(completed: int, total: int) -> None:
+                    _publish_safe(
+                        "document.processing",
+                        {
+                            "document_id": document_id,
+                            "stage": "extracting_entities",
+                            "chunk_count": total,
+                            "chunks_done": completed,
+                            "progress": completed / total if total > 0 else 0.0,
+                        },
+                    )
+
                 summary = extraction_service.extract_from_chunks(
                     chunks,
                     investigation_id=document.investigation_id,
                     on_entity_discovered=on_entity_discovered,
+                    on_chunk_progress=on_extraction_progress,
                 )
 
                 document.entity_count = summary.entity_count
@@ -267,8 +280,23 @@ def process_document_task(document_id: str, investigation_id: str) -> None:
 
                 embedding_client = OllamaEmbeddingClient(settings.ollama_embedding_url)
                 embedding_service = EmbeddingService(embedding_client, qdrant_client)
+
+                def on_embedding_progress(completed: int, total: int) -> None:
+                    _publish_safe(
+                        "document.processing",
+                        {
+                            "document_id": document_id,
+                            "stage": "embedding",
+                            "chunk_count": total,
+                            "chunks_done": completed,
+                            "progress": completed / total if total > 0 else 0.0,
+                        },
+                    )
+
                 emb_summary = embedding_service.embed_chunks(
-                    chunks, investigation_id=document.investigation_id
+                    chunks,
+                    investigation_id=document.investigation_id,
+                    on_chunk_progress=on_embedding_progress,
                 )
 
                 if emb_summary.failed_count > 0:

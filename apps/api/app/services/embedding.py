@@ -1,5 +1,6 @@
 import uuid
 from dataclasses import dataclass
+from typing import Callable
 
 from loguru import logger
 from qdrant_client import QdrantClient
@@ -25,6 +26,7 @@ class EmbeddingService:
         self,
         chunks: list,
         investigation_id: uuid.UUID,
+        on_chunk_progress: Callable[[int, int], None] | None = None,
     ) -> EmbeddingSummary:
         """Generate embeddings for all chunks and store in Qdrant.
 
@@ -34,7 +36,7 @@ class EmbeddingService:
         embedded_count = 0
         failed_count = 0
 
-        for chunk in chunks:
+        for chunk_idx, chunk in enumerate(chunks):
             try:
                 vector = self.embedding_client.embed(chunk.text)
                 self.qdrant_client.upsert(
@@ -63,6 +65,9 @@ class EmbeddingService:
                     error=str(exc),
                 )
                 failed_count += 1
+
+            if on_chunk_progress is not None:
+                on_chunk_progress(chunk_idx + 1, len(chunks))
 
         return EmbeddingSummary(
             embedded_count=embedded_count,

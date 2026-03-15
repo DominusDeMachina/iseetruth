@@ -39,13 +39,14 @@ class EntityExtractionService:
         chunks: list,
         investigation_id: uuid.UUID,
         on_entity_discovered: Callable | None = None,
+        on_chunk_progress: Callable[[int, int], None] | None = None,
     ) -> ExtractionSummary:
         """Extract entities and relationships from all chunks, storing results in Neo4j."""
         seen_entities: set[tuple[str, str]] = set()
         entity_confidences: dict[tuple[str, str], float] = {}
         total_relationship_count = 0
 
-        for chunk in chunks:
+        for chunk_idx, chunk in enumerate(chunks):
             entities = self._extract_entities(chunk)
             relationships = self._extract_relationships(chunk, entities)
             self._store_in_neo4j(chunk, entities, relationships, investigation_id)
@@ -60,6 +61,9 @@ class EntityExtractionService:
                         on_entity_discovered(entity)
 
             total_relationship_count += len(relationships)
+
+            if on_chunk_progress is not None:
+                on_chunk_progress(chunk_idx + 1, len(chunks))
 
         avg_confidence = (
             (sum(entity_confidences.values()) / len(entity_confidences))

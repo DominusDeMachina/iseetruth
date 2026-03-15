@@ -9,6 +9,8 @@ export type EntityTypeSummary = components["schemas"]["EntityTypeSummary"];
 export function useEntities(
   investigationId: string,
   typeFilter?: string,
+  /** When true, poll every 5s to pick up newly extracted entities. */
+  polling = false,
 ) {
   return useQuery<EntityListResponse>({
     queryKey: ["entities", investigationId, typeFilter],
@@ -26,5 +28,6 @@ export function useEntities(
       return data;
     },
     enabled: !!investigationId,
+    refetchInterval: polling ? 5000 : false,
   });
 }
