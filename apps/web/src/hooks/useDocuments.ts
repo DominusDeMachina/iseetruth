@@ -98,6 +98,65 @@ export function useUploadDocuments(investigationId: string) {
   });
 }
 
+export function useRetryDocument(investigationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<DocumentResponse, Error, string, { previous: DocumentListResponse | undefined }>({
+    mutationFn: async (documentId) => {
+      const { data, error } = await api.POST(
+        "/api/v1/investigations/{investigation_id}/documents/{document_id}/retry",
+        {
+          params: {
+            path: {
+              investigation_id: investigationId,
+              document_id: documentId,
+            },
+          },
+        },
+      );
+      if (error) throw error;
+      return data;
+    },
+    onMutate: async (documentId) => {
+      await queryClient.cancelQueries({ queryKey: ["documents", investigationId] });
+      const previous = queryClient.getQueryData<DocumentListResponse>(
+        ["documents", investigationId],
+      );
+
+      // Optimistically update document cache
+      queryClient.setQueryData<DocumentListResponse>(
+        ["documents", investigationId],
+        (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            items: old.items.map((doc) =>
+              doc.id === documentId
+                ? { ...doc, status: "queued", error_message: null, failed_stage: null }
+                : doc,
+            ),
+          };
+        },
+      );
+
+      return { previous };
+    },
+    onError: (_err, _documentId, context) => {
+      // Rollback optimistic update
+      if (context?.previous) {
+        queryClient.setQueryData(
+          ["documents", investigationId],
+          context.previous,
+        );
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["documents", investigationId],
+      });
+    },
+  });
+}
+
 export function useDeleteDocument(investigationId: string) {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({

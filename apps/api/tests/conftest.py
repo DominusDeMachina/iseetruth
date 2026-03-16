@@ -209,6 +209,7 @@ def sample_document(sample_document_id, sample_investigation_id):
     doc.extraction_confidence = None
     doc.extracted_text = None
     doc.error_message = None
+    doc.failed_stage = None
     doc.created_at = datetime(2026, 3, 8, 12, 0, 0, tzinfo=timezone.utc)
     doc.updated_at = datetime(2026, 3, 8, 12, 0, 0, tzinfo=timezone.utc)
     return doc
@@ -224,6 +225,7 @@ def mock_document_service(sample_document):
         mock_service.list_documents = AsyncMock(return_value=([sample_document], 1))
         mock_service.get_document = AsyncMock(return_value=sample_document)
         mock_service.delete_document = AsyncMock(return_value=None)
+        mock_service.retry_failed_document = AsyncMock(return_value=sample_document)
         yield mock_service
 
 

@@ -109,6 +109,7 @@ export function useSSE(
                     ...doc,
                     status: "failed",
                     error_message: event.payload.error ?? null,
+                    failed_stage: event.payload.stage ?? null,
                   };
                 default:
                   return doc;

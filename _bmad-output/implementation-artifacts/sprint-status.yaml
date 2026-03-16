@@ -75,15 +75,15 @@ development_status:
   epic-4-retrospective: optional
 
   # Epic 5: Natural Language Q&A with Source Citations
-  epic-5: in-progress
+  epic-5: done
   5-1-graph-first-query-pipeline: done
   5-2-answer-streaming-qa-panel: done
   5-3-citation-click-through-viewer: done
   epic-5-retrospective: optional
 
   # Epic 6: System Resilience & Error Recovery
-  epic-6: backlog
-  6-1-failed-document-detection-manual-retry: backlog
+  epic-6: in-progress
+  6-1-failed-document-detection-manual-retry: done
   6-2-auto-retry-on-service-recovery: backlog
   6-3-per-service-graceful-degradation: backlog
   6-4-service-status-display-error-boundaries: backlog

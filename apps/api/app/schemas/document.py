@@ -16,6 +16,7 @@ class DocumentResponse(BaseModel):
     extraction_confidence: float | None = None
     extracted_text: str | None = None
     error_message: str | None = None
+    failed_stage: str | None = None
 
     @computed_field
     @property

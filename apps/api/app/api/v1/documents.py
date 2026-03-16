@@ -5,7 +5,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.postgres import get_db
-from app.exceptions import DocumentNotReadyError, InvalidFileTypeError
+from app.exceptions import DocumentNotReadyError, DocumentNotRetryableError, InvalidFileTypeError
 from app.schemas.document import (
     DocumentListResponse,
     DocumentResponse,
@@ -35,6 +35,7 @@ def _to_response(document, include_text: bool = False) -> DocumentResponse:
         extraction_confidence=document.extraction_confidence,
         extracted_text=document.extracted_text if include_text else None,
         error_message=document.error_message,
+        failed_stage=document.failed_stage,
         created_at=document.created_at,
         updated_at=document.updated_at,
     )
@@ -146,3 +147,14 @@ async def delete_document(
     service = DocumentService(db)
     await service.delete_document(investigation_id, document_id)
     return Response(status_code=204)
+
+
+@router.post("/{document_id}/retry", response_model=DocumentResponse)
+async def retry_document(
+    investigation_id: uuid.UUID,
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    service = DocumentService(db)
+    document = await service.retry_failed_document(investigation_id, document_id)
+    return _to_response(document)

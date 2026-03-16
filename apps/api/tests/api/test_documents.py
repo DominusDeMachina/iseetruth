@@ -2,9 +2,9 @@
 
 import io
 import uuid
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
-from app.exceptions import DocumentNotFoundError, DocumentNotReadyError
+from app.exceptions import DocumentNotFoundError, DocumentNotReadyError, DocumentNotRetryableError
 from app.services.investigation import InvestigationNotFoundError
 
 
@@ -297,3 +297,87 @@ def test_get_document_text_failed_returns_409(
     assert response.status_code == 409
     data = response.json()
     assert data["type"] == "urn:osint:error:document_not_ready"
+
+
+# ---------------------------------------------------------------------------
+# POST /documents/{document_id}/retry
+# ---------------------------------------------------------------------------
+
+
+def test_retry_failed_document_returns_200(
+    investigation_client,
+    mock_document_service,
+    sample_investigation_id,
+    sample_document_id,
+    sample_document,
+):
+    """Retry on failed document should return 200 with reset status."""
+    sample_document.status = "queued"
+    sample_document.error_message = None
+    sample_document.failed_stage = None
+    mock_document_service.retry_failed_document = AsyncMock(return_value=sample_document)
+
+    response = investigation_client.post(
+        f"/api/v1/investigations/{sample_investigation_id}/documents/{sample_document_id}/retry"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "queued"
+    assert data["error_message"] is None
+    mock_document_service.retry_failed_document.assert_called_once_with(
+        sample_investigation_id, sample_document_id
+    )
+
+
+def test_retry_non_failed_document_returns_409(
+    investigation_client,
+    mock_document_service,
+    sample_investigation_id,
+    sample_document_id,
+):
+    """Retry on document not in 'failed' status should return 409."""
+    mock_document_service.retry_failed_document.side_effect = DocumentNotRetryableError(
+        str(sample_document_id), "complete"
+    )
+    response = investigation_client.post(
+        f"/api/v1/investigations/{sample_investigation_id}/documents/{sample_document_id}/retry"
+    )
+    assert response.status_code == 409
+    data = response.json()
+    assert data["type"] == "urn:osint:error:document_not_retryable"
+
+
+def test_retry_nonexistent_document_returns_404(
+    investigation_client,
+    mock_document_service,
+    sample_investigation_id,
+):
+    """Retry on non-existent document should return 404."""
+    not_found_id = uuid.UUID("99999999-9999-9999-9999-999999999999")
+    mock_document_service.retry_failed_document.side_effect = DocumentNotFoundError(
+        str(not_found_id)
+    )
+    response = investigation_client.post(
+        f"/api/v1/investigations/{sample_investigation_id}/documents/{not_found_id}/retry"
+    )
+    assert response.status_code == 404
+    data = response.json()
+    assert data["type"] == "urn:osint:error:document_not_found"
+
+
+def test_retry_document_wrong_investigation_returns_404(
+    investigation_client,
+    mock_document_service,
+    sample_document_id,
+):
+    """Retry on document from different investigation should return 404."""
+    wrong_investigation = uuid.UUID("88888888-8888-8888-8888-888888888888")
+    mock_document_service.retry_failed_document.side_effect = DocumentNotFoundError(
+        str(sample_document_id)
+    )
+    response = investigation_client.post(
+        f"/api/v1/investigations/{wrong_investigation}/documents/{sample_document_id}/retry"
+    )
+    assert response.status_code == 404
+    data = response.json()
+    assert data["type"] == "urn:osint:error:document_not_found"

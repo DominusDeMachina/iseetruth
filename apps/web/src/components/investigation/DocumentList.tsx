@@ -6,7 +6,9 @@ interface DocumentListProps {
   isLoading: boolean;
   onDeleteDocument: (id: string) => void;
   onViewText?: (id: string) => void;
+  onRetry?: (id: string) => void;
   deletingId?: string | null;
+  retryingId?: string | null;
 }
 
 export function DocumentList({
@@ -14,7 +16,9 @@ export function DocumentList({
   isLoading,
   onDeleteDocument,
   onViewText,
+  onRetry,
   deletingId,
+  retryingId,
 }: DocumentListProps) {
   if (isLoading) {
     return (
@@ -41,7 +45,9 @@ export function DocumentList({
           document={doc}
           onDelete={onDeleteDocument}
           onViewText={onViewText}
+          onRetry={onRetry}
           isDeleting={deletingId === doc.id}
+          isRetrying={retryingId === doc.id}
         />
       ))}
     </div>

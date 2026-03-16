@@ -58,10 +58,16 @@ describe("DocumentCard", () => {
     expect(screen.getByText("Complete")).toBeInTheDocument();
   });
 
-  it("displays failed status badge", () => {
+  it("displays 'Failed' badge when no error_message", () => {
     const failedDoc = { ...mockDocument, status: "failed" };
     render(<DocumentCard document={failedDoc} onDelete={vi.fn()} />);
     expect(screen.getByText("Failed")).toBeInTheDocument();
+  });
+
+  it("displays 'Failed — Retry' badge when error_message present", () => {
+    const failedDoc = { ...mockDocument, status: "failed", error_message: "Ollama unavailable" };
+    render(<DocumentCard document={failedDoc} onDelete={vi.fn()} />);
+    expect(screen.getByText("Failed — Retry")).toBeInTheDocument();
   });
 
   it("displays extracting_text status as 'Extracting Text'", () => {
@@ -128,5 +134,74 @@ describe("DocumentCard", () => {
   it("does not show entity count when entity_count is null", () => {
     render(<DocumentCard document={mockDocument} onDelete={vi.fn()} />);
     expect(screen.queryByText(/entities/)).not.toBeInTheDocument();
+  });
+
+  it("shows retry button only for failed documents", () => {
+    const failedDoc = { ...mockDocument, status: "failed", error_message: "Test error" };
+    const onRetry = vi.fn();
+    render(<DocumentCard document={failedDoc} onDelete={vi.fn()} onRetry={onRetry} />);
+    expect(
+      screen.getByRole("button", { name: /retry processing evidence-report\.pdf/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not show retry button for non-failed documents", () => {
+    const onRetry = vi.fn();
+    render(<DocumentCard document={mockDocument} onDelete={vi.fn()} onRetry={onRetry} />);
+    expect(
+      screen.queryByRole("button", { name: /retry/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("calls onRetry with document ID when retry button is clicked", () => {
+    const failedDoc = { ...mockDocument, status: "failed", error_message: "Test error" };
+    const onRetry = vi.fn();
+    render(<DocumentCard document={failedDoc} onDelete={vi.fn()} onRetry={onRetry} />);
+    const retryBtn = screen.getByRole("button", { name: /retry processing/i });
+    fireEvent.click(retryBtn);
+    expect(onRetry).toHaveBeenCalledWith(failedDoc.id);
+  });
+
+  it("retry button has correct aria-label", () => {
+    const failedDoc = { ...mockDocument, status: "failed", error_message: "Test error" };
+    render(<DocumentCard document={failedDoc} onDelete={vi.fn()} onRetry={vi.fn()} />);
+    const retryBtn = screen.getByRole("button", {
+      name: "Retry processing evidence-report.pdf",
+    });
+    expect(retryBtn).toBeInTheDocument();
+  });
+
+  it("retry button is disabled when isRetrying=true", () => {
+    const failedDoc = { ...mockDocument, status: "failed", error_message: "Test error" };
+    render(
+      <DocumentCard
+        document={failedDoc}
+        onDelete={vi.fn()}
+        onRetry={vi.fn()}
+        isRetrying={true}
+      />,
+    );
+    const retryBtn = screen.getByRole("button", { name: /retry processing/i });
+    expect(retryBtn).toBeDisabled();
+  });
+
+  it("displays error message for failed documents", () => {
+    const failedDoc = {
+      ...mockDocument,
+      status: "failed",
+      error_message: "Ollama LLM service is unavailable",
+    };
+    render(<DocumentCard document={failedDoc} onDelete={vi.fn()} />);
+    expect(
+      screen.getByText("Ollama LLM service is unavailable"),
+    ).toBeInTheDocument();
+  });
+
+  it("does not show retry button when onRetry is not provided", () => {
+    const failedDoc = { ...mockDocument, status: "failed", error_message: "Test error" };
+    render(<DocumentCard document={failedDoc} onDelete={vi.fn()} />);
+    expect(
+      screen.queryByRole("button", { name: /retry/i }),
+    ).not.toBeInTheDocument();
   });
 });

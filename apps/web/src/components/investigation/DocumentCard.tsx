@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Eye, FileText, Trash2 } from "lucide-react";
+import { AlertTriangle, Eye, FileText, RotateCcw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteDocumentDialog } from "./DeleteDocumentDialog";
@@ -44,14 +44,18 @@ interface DocumentCardProps {
   document: DocumentWithProgress;
   onDelete: (id: string) => void;
   onViewText?: (id: string) => void;
+  onRetry?: (id: string) => void;
   isDeleting?: boolean;
+  isRetrying?: boolean;
 }
 
 export function DocumentCard({
   document,
   onDelete,
   onViewText,
+  onRetry,
   isDeleting = false,
+  isRetrying = false,
 }: DocumentCardProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const processing = isProcessing(document.status);
@@ -96,6 +100,11 @@ export function DocumentCard({
                 </>
               )}
           </div>
+          {document.status === "failed" && document.error_message && (
+            <p className="truncate text-xs text-[var(--status-error)]">
+              {document.error_message}
+            </p>
+          )}
         </div>
 
         {processing && (
@@ -124,8 +133,10 @@ export function DocumentCard({
           variant="outline"
           className={statusStyles[document.status] ?? ""}
         >
-          {statusLabels[document.status] ??
-            document.status.charAt(0).toUpperCase() + document.status.slice(1)}
+          {document.status === "failed" && document.error_message
+            ? "Failed — Retry"
+            : (statusLabels[document.status] ??
+                document.status.charAt(0).toUpperCase() + document.status.slice(1))}
         </Badge>
 
         {document.extraction_quality && (
@@ -140,6 +151,20 @@ export function DocumentCard({
               document.extraction_quality.slice(1)}{" "}
             confidence
           </Badge>
+        )}
+
+        {document.status === "failed" && onRetry && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0 gap-1 text-xs text-[var(--text-muted)] hover:text-[var(--status-warning)]"
+            onClick={() => onRetry(document.id)}
+            disabled={isRetrying}
+            aria-label={`Retry processing ${document.filename}`}
+          >
+            <RotateCcw className={`size-3 ${isRetrying ? "animate-spin" : ""}`} />
+            Retry
+          </Button>
         )}
 
         {document.status === "complete" && (

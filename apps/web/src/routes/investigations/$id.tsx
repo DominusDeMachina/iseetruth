@@ -6,6 +6,7 @@ import {
   useDocuments,
   useUploadDocuments,
   useDeleteDocument,
+  useRetryDocument,
 } from "@/hooks/useDocuments";
 import { useSSE } from "@/hooks/useSSE";
 import { ACTIVE_STATUSES, statusLabels } from "@/lib/document-constants";
@@ -43,7 +44,10 @@ function InvestigationDetail() {
   const { data: documentsData, isLoading: isLoadingDocs } = useDocuments(id);
   const uploadMutation = useUploadDocuments(id);
   const deleteMutation = useDeleteDocument(id);
+  const retryMutation = useRetryDocument(id);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [retryError, setRetryError] = useState(false);
   const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
   const [docsDialogOpen, setDocsDialogOpen] = useState(false);
   const [prefillQuestion, setPrefillQuestion] = useState<string | undefined>();
@@ -181,7 +185,18 @@ function InvestigationDetail() {
           });
         }}
         onViewText={(docId) => setViewingDocumentId(docId)}
+        onRetry={(docId) => {
+          setRetryingId(docId);
+          retryMutation.mutate(docId, {
+            onSettled: () => setRetryingId(null),
+            onError: () => {
+              setRetryError(true);
+              setTimeout(() => setRetryError(false), 5000);
+            },
+          });
+        }}
         deletingId={deletingId}
+        retryingId={retryingId}
       />
 
       <DocumentTextViewer
@@ -303,6 +318,13 @@ function InvestigationDetail() {
             Citation not found — the answer may have changed.
           </div>
         )}
+
+        {/* Retry error notification */}
+        {retryError && (
+          <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg border-l-4 border-[var(--status-error)] bg-[var(--bg-elevated)] px-4 py-2 text-sm text-[var(--text-primary)] shadow-lg">
+            Failed to retry document. Please check service status.
+          </div>
+        )}
       </div>
     );
   }
@@ -363,7 +385,18 @@ function InvestigationDetail() {
           });
         }}
         onViewText={(docId) => setViewingDocumentId(docId)}
+        onRetry={(docId) => {
+          setRetryingId(docId);
+          retryMutation.mutate(docId, {
+            onSettled: () => setRetryingId(null),
+            onError: () => {
+              setRetryError(true);
+              setTimeout(() => setRetryError(false), 5000);
+            },
+          });
+        }}
         deletingId={deletingId}
+        retryingId={retryingId}
       />
 
       <DocumentTextViewer
@@ -373,6 +406,13 @@ function InvestigationDetail() {
           if (!open) setViewingDocumentId(null);
         }}
       />
+
+      {/* Retry error notification */}
+      {retryError && (
+        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg border-l-4 border-[var(--status-error)] bg-[var(--bg-elevated)] px-4 py-2 text-sm text-[var(--text-primary)] shadow-lg">
+          Failed to retry document. Please check service status.
+        </div>
+      )}
     </div>
   );
 }
