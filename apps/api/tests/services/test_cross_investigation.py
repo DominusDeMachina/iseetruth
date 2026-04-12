@@ -29,11 +29,32 @@ def _make_neo4j_driver(match_records):
 
 
 def _make_db_session(inv_rows):
-    """Build a mock async SQLAlchemy session returning investigation names."""
+    """Build a mock async SQLAlchemy session returning investigation names.
+
+    The service now makes multiple db.execute calls:
+    1. _load_dismissed_matches (returns dismissed match rows)
+    2. _resolve_investigation_names (returns investigation rows)
+
+    We mock execute to return an empty dismissed set first, then inv names.
+    """
     mock_db = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.__iter__ = MagicMock(return_value=iter(inv_rows))
-    mock_db.execute = AsyncMock(return_value=mock_result)
+    call_count = 0
+
+    async def _side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First call: _load_dismissed_matches — return empty result
+            empty_result = MagicMock()
+            empty_result.__iter__ = MagicMock(return_value=iter([]))
+            return empty_result
+        else:
+            # Subsequent calls: _resolve_investigation_names
+            inv_result = MagicMock()
+            inv_result.__iter__ = MagicMock(return_value=iter(inv_rows))
+            return inv_result
+
+    mock_db.execute = AsyncMock(side_effect=_side_effect)
     return mock_db
 
 
@@ -187,3 +208,225 @@ class TestFindMatches:
         result = await service.find_matches(uuid.UUID(INVESTIGATION_A))
 
         assert result.query_duration_ms >= 0
+
+    @pytest.mark.asyncio
+    async def test_dismissed_matches_excluded(self):
+        """Dismissed matches should be filtered out of find_matches results."""
+        records = [
+            {
+                "entity_name": "John Doe",
+                "entity_type": "Person",
+                "source_entity_id": "e1-id",
+                "source_confidence": 0.9,
+                "source_rel_count": 3,
+                "match_entity_id": "e2-id",
+                "match_investigation_id": INVESTIGATION_B,
+                "match_confidence": 0.85,
+                "match_rel_count": 2,
+                "is_exact_match": True,
+            },
+        ]
+        inv_row = MagicMock()
+        inv_row.id = uuid.UUID(INVESTIGATION_B)
+        inv_row.name = "Investigation B"
+
+        driver = _make_neo4j_driver(records)
+
+        # Mock DB to return a dismissed match on first call
+        mock_db = AsyncMock()
+        call_count = 0
+
+        async def _side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # _load_dismissed_matches: return dismissed entry
+                dismissed_row = MagicMock()
+                dismissed_row.entity_name = "John Doe"
+                dismissed_row.entity_type = "person"
+                dismissed_row.target_investigation_id = uuid.UUID(INVESTIGATION_B)
+                result = MagicMock()
+                result.__iter__ = MagicMock(return_value=iter([dismissed_row]))
+                return result
+            else:
+                inv_result = MagicMock()
+                inv_result.__iter__ = MagicMock(return_value=iter([inv_row]))
+                return inv_result
+
+        mock_db.execute = AsyncMock(side_effect=_side_effect)
+
+        service = CrossInvestigationService(driver, mock_db)
+        result = await service.find_matches(uuid.UUID(INVESTIGATION_A))
+
+        # John Doe should be excluded because it was dismissed
+        assert result.total_matches == 0
+
+
+class TestSearchAcrossInvestigations:
+    @pytest.mark.asyncio
+    async def test_search_returns_grouped_results(self):
+        search_records = [
+            {
+                "entity_name": "Acme Corp",
+                "entity_type": "Organization",
+                "investigation_id": INVESTIGATION_A,
+                "entity_id": "e1",
+                "confidence_score": 0.9,
+                "rel_count": 3,
+            },
+            {
+                "entity_name": "Acme Corp",
+                "entity_type": "Organization",
+                "investigation_id": INVESTIGATION_B,
+                "entity_id": "e2",
+                "confidence_score": 0.85,
+                "rel_count": 1,
+            },
+        ]
+        inv_row_a = MagicMock()
+        inv_row_a.id = uuid.UUID(INVESTIGATION_A)
+        inv_row_a.name = "Investigation A"
+        inv_row_b = MagicMock()
+        inv_row_b.id = uuid.UUID(INVESTIGATION_B)
+        inv_row_b.name = "Investigation B"
+
+        driver = _make_neo4j_driver(search_records)
+        db = _make_db_session([inv_row_a, inv_row_b])
+
+        service = CrossInvestigationService(driver, db)
+        result = await service.search_across_investigations("acme")
+
+        assert result.total_results == 1
+        assert result.results[0].entity_name == "Acme Corp"
+        assert result.results[0].investigation_count == 2
+
+    @pytest.mark.asyncio
+    async def test_search_returns_empty_for_no_matches(self):
+        driver = _make_neo4j_driver([])
+        db = _make_db_session([])
+
+        service = CrossInvestigationService(driver, db)
+        result = await service.search_across_investigations("nonexistent")
+
+        assert result.total_results == 0
+        assert result.results == []
+
+    @pytest.mark.asyncio
+    async def test_search_with_type_filter(self):
+        search_records = [
+            {
+                "entity_name": "London",
+                "entity_type": "Location",
+                "investigation_id": INVESTIGATION_A,
+                "entity_id": "e1",
+                "confidence_score": 0.9,
+                "rel_count": 2,
+            },
+        ]
+        inv_row = MagicMock()
+        inv_row.id = uuid.UUID(INVESTIGATION_A)
+        inv_row.name = "Investigation A"
+
+        driver = _make_neo4j_driver(search_records)
+        db = _make_db_session([inv_row])
+
+        service = CrossInvestigationService(driver, db)
+        result = await service.search_across_investigations(
+            "london", entity_type="location"
+        )
+
+        assert result.total_results == 1
+        assert result.results[0].entity_type == "location"
+
+
+class TestGetEntityDetailAcross:
+    @pytest.mark.asyncio
+    async def test_entity_detail_across_investigations(self):
+        detail_records = [
+            {
+                "investigation_id": INVESTIGATION_A,
+                "entity_id": "e1",
+                "confidence_score": 0.9,
+                "relationships": [
+                    {
+                        "type": "WORKS_FOR",
+                        "target_name": "Corp X",
+                        "target_type": "Organization",
+                        "confidence": 0.85,
+                    }
+                ],
+                "documents": [
+                    {"document_id": "doc1", "mention_count": 1}
+                ],
+            },
+        ]
+        inv_row = MagicMock()
+        inv_row.id = uuid.UUID(INVESTIGATION_A)
+        inv_row.name = "Investigation A"
+        doc_row = MagicMock()
+        doc_row.id = uuid.UUID("11111111-0000-0000-0000-000000000001")
+        doc_row.filename = "report.pdf"
+
+        driver = _make_neo4j_driver(detail_records)
+
+        # Mock DB with multiple calls: inv names + doc filenames
+        mock_db = AsyncMock()
+        call_count = 0
+
+        async def _side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                result = MagicMock()
+                result.__iter__ = MagicMock(return_value=iter([inv_row]))
+                return result
+            else:
+                result = MagicMock()
+                result.__iter__ = MagicMock(return_value=iter([doc_row]))
+                return result
+
+        mock_db.execute = AsyncMock(side_effect=_side_effect)
+
+        service = CrossInvestigationService(driver, mock_db)
+        result = await service.get_entity_detail_across_investigations(
+            "John Doe", "person"
+        )
+
+        assert result.entity_name == "John Doe"
+        assert result.total_investigations == 1
+        assert result.investigations[0].relationship_count == 1
+        assert result.investigations[0].relationships[0].type == "WORKS_FOR"
+
+
+class TestGetCrossLinkCounts:
+    @pytest.mark.asyncio
+    async def test_returns_counts_per_investigation(self):
+        count_records = [
+            {"investigation_id": INVESTIGATION_A, "link_count": 3},
+            {"investigation_id": INVESTIGATION_B, "link_count": 1},
+        ]
+        driver = _make_neo4j_driver(count_records)
+
+        # Mock DB for _count_dismissed_matches calls (return 0)
+        mock_db = AsyncMock()
+        count_result = MagicMock()
+        count_result.scalar_one.return_value = 0
+        mock_db.execute = AsyncMock(return_value=count_result)
+
+        service = CrossInvestigationService(driver, mock_db)
+        result = await service.get_cross_link_counts(
+            [INVESTIGATION_A, INVESTIGATION_B]
+        )
+
+        assert result[INVESTIGATION_A] == 3
+        assert result[INVESTIGATION_B] == 1
+
+    @pytest.mark.asyncio
+    async def test_empty_investigation_list(self):
+        driver = _make_neo4j_driver([])
+        mock_db = AsyncMock()
+
+        service = CrossInvestigationService(driver, mock_db)
+        result = await service.get_cross_link_counts([])
+
+        assert result == {}

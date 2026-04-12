@@ -40,10 +40,14 @@ const GraphCanvas = lazy(() =>
 
 export const Route = createFileRoute("/investigations/$id")({
   component: InvestigationDetail,
+  validateSearch: (search: Record<string, unknown>): { highlightEntity?: string } => ({
+    highlightEntity: typeof search.highlightEntity === "string" ? search.highlightEntity : undefined,
+  }),
 });
 
 function InvestigationDetail() {
   const { id } = Route.useParams();
+  const { highlightEntity: highlightEntityParam } = Route.useSearch();
   const { data: investigation, isLoading, isError } = useInvestigation(id);
   const { data: documentsData, isLoading: isLoadingDocs } = useDocuments(id);
   const uploadMutation = useUploadDocuments(id);
@@ -62,6 +66,13 @@ function InvestigationDetail() {
   const [activeCitationEntities, setActiveCitationEntities] = useState<EntityReference[]>([]);
   const [citationNotFound, setCitationNotFound] = useState(false);
   const conversationRef = useRef<ConversationEntry[]>([]);
+
+  // Apply highlightEntity from search param (cross-investigation navigation)
+  useEffect(() => {
+    if (highlightEntityParam) {
+      setHighlightEntities([highlightEntityParam]);
+    }
+  }, [highlightEntityParam]);
 
   const documents = documentsData?.items ?? [];
   const hasProcessing = documents.some((d) => ACTIVE_STATUSES.has(d.status));

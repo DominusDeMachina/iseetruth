@@ -17,6 +17,7 @@ class InvestigationResponse(BaseModel):
     updated_at: datetime
     document_count: int = 0
     entity_count: int = 0
+    cross_link_count: int = 0
 
     model_config = {"from_attributes": True}
 

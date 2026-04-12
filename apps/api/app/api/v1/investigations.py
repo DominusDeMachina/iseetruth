@@ -1,9 +1,11 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Response
+from loguru import logger
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.neo4j import driver as neo4j_driver
 from app.db.postgres import get_db
 from app.models.document import Document
 from app.schemas.investigation import (
@@ -11,12 +13,15 @@ from app.schemas.investigation import (
     InvestigationListResponse,
     InvestigationResponse,
 )
+from app.services.cross_investigation import CrossInvestigationService
 from app.services.investigation import InvestigationService
 
 router = APIRouter(prefix="/investigations", tags=["investigations"])
 
 
-def _to_response(investigation, document_count: int = 0) -> InvestigationResponse:
+def _to_response(
+    investigation, document_count: int = 0, cross_link_count: int = 0
+) -> InvestigationResponse:
     return InvestigationResponse(
         id=investigation.id,
         name=investigation.name,
@@ -25,6 +30,7 @@ def _to_response(investigation, document_count: int = 0) -> InvestigationRespons
         updated_at=investigation.updated_at,
         document_count=document_count,
         entity_count=0,
+        cross_link_count=cross_link_count,
     )
 
 
@@ -63,6 +69,22 @@ async def create_investigation(
     return _to_response(investigation, document_count=0)
 
 
+async def _get_cross_link_counts_batch(
+    investigation_ids: list[uuid.UUID], db: AsyncSession
+) -> dict[uuid.UUID, int]:
+    """Get cross-investigation entity link counts via Neo4j. Best-effort."""
+    if not investigation_ids:
+        return {}
+    try:
+        service = CrossInvestigationService(neo4j_driver, db)
+        str_ids = [str(inv_id) for inv_id in investigation_ids]
+        raw_counts = await service.get_cross_link_counts(str_ids)
+        return {uuid.UUID(k): v for k, v in raw_counts.items()}
+    except Exception as exc:
+        logger.warning("Failed to fetch cross-link counts", error=str(exc))
+        return {}
+
+
 @router.get("/", response_model=InvestigationListResponse)
 async def list_investigations(
     limit: int = Query(50, ge=1, le=100),
@@ -71,10 +93,13 @@ async def list_investigations(
 ):
     service = InvestigationService(db)
     investigations, total = await service.list_investigations(limit, offset)
-    counts = await _get_document_counts_batch(
-        [inv.id for inv in investigations], db
-    )
-    items = [_to_response(inv, counts.get(inv.id, 0)) for inv in investigations]
+    inv_ids = [inv.id for inv in investigations]
+    counts = await _get_document_counts_batch(inv_ids, db)
+    cross_counts = await _get_cross_link_counts_batch(inv_ids, db)
+    items = [
+        _to_response(inv, counts.get(inv.id, 0), cross_counts.get(inv.id, 0))
+        for inv in investigations
+    ]
     return InvestigationListResponse(
         items=items,
         total=total,
@@ -89,7 +114,9 @@ async def get_investigation(
     service = InvestigationService(db)
     investigation = await service.get_investigation(investigation_id)
     doc_count = await _get_document_count(investigation_id, db)
-    return _to_response(investigation, doc_count)
+    cross_counts = await _get_cross_link_counts_batch([investigation_id], db)
+    cross_count = cross_counts.get(investigation_id, 0)
+    return _to_response(investigation, doc_count, cross_count)
 
 
 @router.delete("/{investigation_id}", status_code=204)

@@ -727,6 +727,13 @@ export function GraphCanvas({
         <CrossInvestigationPanel
           investigationId={investigationId}
           onClose={() => setCrossInvestigationOpen(false)}
+          onNavigateToInvestigation={(targetId, entityName) => {
+            // Navigate to the target investigation with entity highlight
+            const searchParams = entityName
+              ? `?highlightEntity=${encodeURIComponent(entityName)}`
+              : "";
+            window.location.href = `/investigations/${targetId}${searchParams}`;
+          }}
         />
       )}
     </div>
