@@ -47,7 +47,9 @@ function parseAnswerText(
     if (seg.type === "citation") {
       const cit = citations.find((c) => c.citation_number === seg.num);
       const ariaLabel = cit
-        ? `Source: ${cit.document_filename}, page ${cit.page_start}`
+        ? cit.source_url
+          ? `Source: ${cit.document_filename} (web)`
+          : `Source: ${cit.document_filename}, page ${cit.page_start}`
         : `Source ${seg.num}`;
       parts.push(
         <sup key={`cite-${keyCounter++}`} className="ml-0.5">
@@ -183,7 +185,7 @@ const AnswerEntry = memo(function AnswerEntry({
               className="block text-xs text-[var(--text-secondary)] hover:text-[var(--status-info)] hover:underline transition-colors"
             >
               [{cit.citation_number}] {cit.document_filename}
-              {cit.page_start ? `, page ${cit.page_start}` : ""}
+              {cit.source_url ? " (web)" : cit.page_start ? `, page ${cit.page_start}` : ""}
             </button>
           ))}
         </div>

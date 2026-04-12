@@ -31,6 +31,8 @@ describe("AnswerPanel", () => {
           page_start: 3,
           page_end: 3,
           text_excerpt: "signed",
+          source_url: null,
+          document_type: "pdf",
         },
       ],
     };
@@ -215,6 +217,8 @@ describe("AnswerPanel", () => {
           page_start: 5,
           page_end: 5,
           text_excerpt: "text",
+          source_url: null,
+          document_type: "pdf",
         },
       ],
     };

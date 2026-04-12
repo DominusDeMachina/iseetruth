@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { RefreshCw } from "lucide-react";
+import { ExternalLink, Globe, RefreshCw } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -145,6 +145,7 @@ export function CitationModal({
   entities = [],
 }: CitationModalProps) {
   const chunkId = citation?.chunk_id ?? null;
+  const isWebSource = citation?.document_type === "web" || !!citation?.source_url;
   const { data, isLoading, isError, refetch } = useChunkContext(
     investigationId,
     chunkId,
@@ -157,7 +158,9 @@ export function CitationModal({
     : null;
 
   const ariaLabel = citation
-    ? `Source citation from ${citation.document_filename}, page ${citation.page_start}`
+    ? isWebSource
+      ? `Source citation from web page ${citation.document_filename}`
+      : `Source citation from ${citation.document_filename}, page ${citation.page_start}`
     : "Source citation";
 
   return (
@@ -167,11 +170,45 @@ export function CitationModal({
         aria-label={ariaLabel}
       >
         <DialogHeader>
-          <DialogTitle className="text-[var(--text-primary)]">
-            Citation — {citation?.document_filename ?? "Unknown"}
+          <DialogTitle className="flex items-center gap-2 text-[var(--text-primary)]">
+            {isWebSource && (
+              <Globe className="size-4 shrink-0 text-[var(--text-muted)]" aria-hidden="true" />
+            )}
+            <span>Citation — {citation?.document_filename ?? "Unknown"}</span>
+            {isWebSource && (
+              <span className="inline-flex items-center rounded-full bg-[var(--bg-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]" data-testid="web-source-badge">
+                Web Source
+              </span>
+            )}
           </DialogTitle>
           <DialogDescription className="text-[var(--text-secondary)]">
-            {isLoading ? "Loading..." : pageLabel}
+            {isLoading ? (
+              "Loading..."
+            ) : isWebSource && citation?.source_url ? (
+              <span className="flex items-center gap-1.5">
+                <a
+                  href={citation.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="truncate hover:underline text-[var(--status-info)]"
+                  data-testid="citation-source-url"
+                >
+                  {citation.source_url}
+                </a>
+                <a
+                  href={citation.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                  aria-label="Open source URL in new tab"
+                  data-testid="citation-external-link"
+                >
+                  <ExternalLink className="size-3.5" />
+                </a>
+              </span>
+            ) : (
+              pageLabel
+            )}
           </DialogDescription>
         </DialogHeader>
 

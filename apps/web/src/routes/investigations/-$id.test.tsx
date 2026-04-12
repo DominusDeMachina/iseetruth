@@ -293,6 +293,8 @@ describe("Investigation Detail — Citation Click-Through Integration", () => {
       page_start: 3,
       page_end: 3,
       text_excerpt: "Deputy Mayor Horvat signed",
+      source_url: null,
+      document_type: "pdf",
     };
 
     const entry: ConversationEntry = {
@@ -372,6 +374,8 @@ describe("Investigation Detail — Citation Click-Through Integration", () => {
       page_start: 5,
       page_end: 5,
       text_excerpt: "text",
+      source_url: null,
+      document_type: "pdf",
     };
 
     const entry: ConversationEntry = {
@@ -453,6 +457,8 @@ describe("Investigation Detail — Citation Click-Through Integration", () => {
       page_start: 3,
       page_end: 3,
       text_excerpt: "Horvat signed",
+      source_url: null,
+      document_type: "pdf",
     };
 
     const queryClient = new QueryClient({
@@ -489,6 +495,8 @@ describe("Investigation Detail — Citation Click-Through Integration", () => {
       page_start: 3,
       page_end: 3,
       text_excerpt: "text",
+      source_url: null,
+      document_type: "pdf",
     };
 
     const queryClient = new QueryClient({

@@ -21,6 +21,8 @@ class Citation(BaseModel):
     page_start: int
     page_end: int
     text_excerpt: str
+    source_url: str | None = None
+    document_type: str = "pdf"
 
 
 class EntityReference(BaseModel):

@@ -520,3 +520,118 @@ class TestFollowupSuggestions:
         result = _generate_followups(mock_client, "q", "a", [])
 
         assert len(result) == 3
+
+
+# ---------------------------------------------------------------------------
+# Web Citation Metadata Tests
+# ---------------------------------------------------------------------------
+
+
+class TestWebCitationMetadata:
+    @pytest.mark.asyncio
+    async def test_citations_include_web_metadata(self):
+        """Citations from web documents include source_url and document_type fields."""
+        import uuid
+
+        from app.models.document import Document
+
+        mock_db = AsyncMock()
+
+        # Simulate a web document and a PDF document in the database
+        web_doc_id = str(uuid.uuid4())
+        pdf_doc_id = str(uuid.uuid4())
+
+        mock_rows = [
+            MagicMock(
+                id=uuid.UUID(web_doc_id),
+                filename="Example News Article",
+                document_type="web",
+                source_url="https://example.com/article",
+            ),
+            MagicMock(
+                id=uuid.UUID(pdf_doc_id),
+                filename="report.pdf",
+                document_type="pdf",
+                source_url=None,
+            ),
+        ]
+        mock_result = MagicMock()
+        mock_result.__iter__ = MagicMock(return_value=iter(mock_rows))
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        graph_results = [
+            {
+                "entity_id": "e1",
+                "id": "e1",
+                "name": "Horvat",
+                "type": "Person",
+                "provenance": [
+                    {
+                        "chunk_id": "c1",
+                        "document_id": web_doc_id,
+                        "page_start": 1,
+                        "page_end": 1,
+                        "text_excerpt": "Horvat mentioned in article",
+                    },
+                    {
+                        "chunk_id": "c2",
+                        "document_id": pdf_doc_id,
+                        "page_start": 5,
+                        "page_end": 6,
+                        "text_excerpt": "Horvat in report",
+                    },
+                ],
+            }
+        ]
+
+        citations, _, _, _ = await _merge_results(graph_results, [], mock_db)
+
+        assert len(citations) == 2
+
+        # Find the web citation and verify metadata
+        web_citation = next(c for c in citations if c.document_id == web_doc_id)
+        assert web_citation.document_type == "web"
+        assert web_citation.source_url == "https://example.com/article"
+        assert web_citation.document_filename == "Example News Article"
+
+        # Find the PDF citation and verify it has default values
+        pdf_citation = next(c for c in citations if c.document_id == pdf_doc_id)
+        assert pdf_citation.document_type == "pdf"
+        assert pdf_citation.source_url is None
+        assert pdf_citation.document_filename == "report.pdf"
+
+    def test_format_citation_list_with_web_source(self):
+        """_format_citation_list includes URL for web sources and pages for PDFs."""
+        citations = [
+            Citation(
+                citation_number=1,
+                document_id="d1",
+                document_filename="News Article",
+                chunk_id="c1",
+                page_start=1,
+                page_end=1,
+                text_excerpt="Article content here",
+                source_url="https://example.com/news",
+                document_type="web",
+            ),
+            Citation(
+                citation_number=2,
+                document_id="d2",
+                document_filename="report.pdf",
+                chunk_id="c2",
+                page_start=3,
+                page_end=5,
+                text_excerpt="Report content here",
+                source_url=None,
+                document_type="pdf",
+            ),
+        ]
+
+        result = _format_citation_list(citations)
+
+        # Web citation includes URL
+        assert "[1] News Article (web: https://example.com/news)" in result
+        # PDF citation includes pages
+        assert "[2] report.pdf (pages 3-5)" in result
+        # Web citation does NOT include page numbers
+        assert "pages 1-1" not in result

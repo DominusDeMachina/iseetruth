@@ -208,7 +208,7 @@ export function GraphFilterPanel({
           <option value="">All documents</option>
           {documents.map((doc) => (
             <option key={doc.id} value={doc.id}>
-              {doc.filename}
+              {doc.document_type === "web" ? "[Web] " : ""}{doc.filename}
             </option>
           ))}
         </select>

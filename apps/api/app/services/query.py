@@ -555,19 +555,28 @@ async def _resolve_provenance(tx, entity_ids: list[str]) -> dict[str, list[dict]
     return provenance
 
 
-async def _resolve_document_filenames(document_ids: list[str], db: AsyncSession) -> dict[str, str]:
-    """Query PostgreSQL documents table for filenames by ID."""
+async def _resolve_document_metadata(document_ids: list[str], db: AsyncSession) -> dict[str, dict]:
+    """Query PostgreSQL documents table for filename, type, and source_url by ID."""
     if not document_ids:
         return {}
     try:
         result = await db.execute(
-            select(Document.id, Document.filename).where(
+            select(
+                Document.id, Document.filename, Document.document_type, Document.source_url
+            ).where(
                 Document.id.in_([uuid.UUID(d) for d in document_ids])
             )
         )
-        return {str(row.id): row.filename for row in result}
+        return {
+            str(row.id): {
+                "filename": row.filename,
+                "document_type": row.document_type,
+                "source_url": row.source_url,
+            }
+            for row in result
+        }
     except Exception as exc:
-        logger.warning("Failed to resolve document filenames", error=str(exc))
+        logger.warning("Failed to resolve document metadata", error=str(exc))
         return {}
 
 
@@ -696,21 +705,24 @@ async def _merge_results(
     # Cap total citations to keep the footer manageable
     citation_sources = citation_sources[:_MAX_CITATIONS]
 
-    # Resolve document filenames
+    # Resolve document metadata (filename, type, source_url)
     doc_ids = list({cs["document_id"] for cs in citation_sources if cs.get("document_id")})
-    filename_map = await _resolve_document_filenames(doc_ids, db)
+    metadata_map = await _resolve_document_metadata(doc_ids, db)
 
     # Build numbered citations
     citations: list[Citation] = []
     for i, source in enumerate(citation_sources, start=1):
+        doc_meta = metadata_map.get(source.get("document_id", ""), {})
         citations.append(Citation(
             citation_number=i,
             document_id=source.get("document_id", ""),
-            document_filename=filename_map.get(source.get("document_id", ""), "unknown"),
+            document_filename=doc_meta.get("filename", "unknown"),
             chunk_id=source.get("chunk_id", ""),
             page_start=source.get("page_start", 0) or 0,
             page_end=source.get("page_end", 0) or 0,
             text_excerpt=source.get("text_excerpt", ""),
+            source_url=doc_meta.get("source_url"),
+            document_type=doc_meta.get("document_type", "pdf"),
         ))
 
     entities_mentioned = list(entities_seen.values())
@@ -797,10 +809,16 @@ def _format_citation_list(citations: list[Citation]) -> str:
     """Format citation list for the LLM."""
     lines = []
     for c in citations:
-        lines.append(
-            f"[{c.citation_number}] {c.document_filename} (pages {c.page_start}-{c.page_end}): "
-            f"{c.text_excerpt[:200]}"
-        )
+        if c.source_url:
+            lines.append(
+                f"[{c.citation_number}] {c.document_filename} (web: {c.source_url}): "
+                f"{c.text_excerpt[:200]}"
+            )
+        else:
+            lines.append(
+                f"[{c.citation_number}] {c.document_filename} (pages {c.page_start}-{c.page_end}): "
+                f"{c.text_excerpt[:200]}"
+            )
     return "\n".join(lines)
 
 
