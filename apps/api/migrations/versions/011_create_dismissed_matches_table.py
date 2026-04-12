@@ -1,7 +1,7 @@
 """Create dismissed_matches table for cross-investigation false positive tracking.
 
-Revision ID: 010
-Revises: 009
+Revision ID: 011
+Revises: 010
 Create Date: 2026-04-12
 """
 
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers
-revision = "010"
-down_revision = "009"
+revision = "011"
+down_revision = "010"
 branch_labels = None
 depends_on = None
 
