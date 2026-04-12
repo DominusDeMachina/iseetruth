@@ -22,6 +22,8 @@ class GraphEdgeData(BaseModel):
     target: str
     type: str
     confidence_score: float
+    origin: str = "extracted"
+    source_annotation: str | None = None
 
 
 class GraphEdge(BaseModel):

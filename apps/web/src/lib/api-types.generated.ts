@@ -229,6 +229,26 @@ export interface paths {
         patch: operations["update_entity_api_v1_investigations__investigation_id__entities__entity_id__patch"];
         trace?: never;
     };
+    "/api/v1/investigations/{investigation_id}/relationships/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Relationship
+         * @description Create a manual relationship between two entities in the investigation's knowledge graph.
+         */
+        post: operations["create_relationship_api_v1_investigations__investigation_id__relationships__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/investigations/{investigation_id}/cross-links/": {
         parameters: {
             query?: never;
@@ -621,6 +641,13 @@ export interface components {
             type: string;
             /** Confidence Score */
             confidence_score: number;
+            /**
+             * Origin
+             * @default extracted
+             */
+            origin?: string;
+            /** Source Annotation */
+            source_annotation?: string | null;
         };
         /** GraphNode */
         GraphNode: {
@@ -760,6 +787,43 @@ export interface components {
          * @enum {string}
          */
         OverallStatusEnum: "healthy" | "degraded" | "unhealthy";
+        /** RelationshipCreateRequest */
+        RelationshipCreateRequest: {
+            /** Source Entity Id */
+            source_entity_id: string;
+            /** Target Entity Id */
+            target_entity_id: string;
+            /** Type */
+            type: string;
+            /** Source Annotation */
+            source_annotation?: string | null;
+        };
+        /** RelationshipResponse */
+        RelationshipResponse: {
+            /** Id */
+            id: string;
+            /** Source Entity Id */
+            source_entity_id: string;
+            /** Target Entity Id */
+            target_entity_id: string;
+            /** Source Entity Name */
+            source_entity_name: string;
+            /** Target Entity Name */
+            target_entity_name: string;
+            /** Type */
+            type: string;
+            /** Confidence Score */
+            confidence_score: number;
+            /** Source */
+            source: string;
+            /** Source Annotation */
+            source_annotation?: string | null;
+            /**
+             * Already Existed
+             * @default false
+             */
+            already_existed?: boolean;
+        };
         /** QueryRequest */
         QueryRequest: {
             /** Question */
@@ -1375,6 +1439,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_relationship_api_v1_investigations__investigation_id__relationships__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                investigation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelationshipCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationshipResponse"];
                 };
             };
             /** @description Validation Error */
