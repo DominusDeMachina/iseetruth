@@ -87,6 +87,8 @@ class GraphQueryService:
                     target=r["target"],
                     type=r["type"],
                     confidence_score=r["confidence_score"] or 0.0,
+                    origin=r.get("origin") or "extracted",
+                    source_annotation=r.get("source_annotation"),
                 ),
             )
             for r in edge_records
@@ -173,6 +175,8 @@ class GraphQueryService:
                         target=target,
                         type=rel_type,
                         confidence_score=r["rel_confidence"] or 0.0,
+                        origin=r.get("rel_origin") or "extracted",
+                        source_annotation=r.get("rel_source_annotation"),
                     ),
                 )
             )
@@ -272,7 +276,8 @@ async def _fetch_edges_between(tx, investigation_id: str, node_ids: list[str]):
         "WHERE src.id IN $node_ids AND tgt.id IN $node_ids "
         "AND type(r) <> 'MENTIONED_IN' "
         "RETURN src.id AS source, tgt.id AS target, "
-        "type(r) AS type, r.confidence_score AS confidence_score",
+        "type(r) AS type, r.confidence_score AS confidence_score, "
+        "r.source AS origin, r.source_annotation AS source_annotation",
         investigation_id=investigation_id,
         node_ids=node_ids,
     )
@@ -347,7 +352,8 @@ async def _fetch_neighbors(tx, entity_id: str, investigation_id: str):
         "neighbor.confidence_score AS confidence_score, "
         "COUNT(r2) AS relationship_count, "
         "startNode(r).id AS rel_source, endNode(r).id AS rel_target, "
-        "type(r) AS rel_type, r.confidence_score AS rel_confidence",
+        "type(r) AS rel_type, r.confidence_score AS rel_confidence, "
+        "r.source AS rel_origin, r.source_annotation AS rel_source_annotation",
         entity_id=entity_id,
         investigation_id=investigation_id,
     )

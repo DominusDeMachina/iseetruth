@@ -56,6 +56,39 @@ describe("EdgeDetailPopover", () => {
     );
   });
 
+  it("shows Manual badge when origin is manual", () => {
+    render(
+      createElement(EdgeDetailPopover, {
+        ...defaultProps,
+        edgeData: { ...defaultProps.edgeData, origin: "manual" },
+      }),
+    );
+
+    expect(screen.getByText("Manual")).toBeTruthy();
+  });
+
+  it("does not show Manual badge for extracted edges", () => {
+    render(createElement(EdgeDetailPopover, defaultProps));
+
+    expect(screen.queryByText("Manual")).toBeNull();
+  });
+
+  it("displays source annotation when present", () => {
+    render(
+      createElement(EdgeDetailPopover, {
+        ...defaultProps,
+        edgeData: {
+          ...defaultProps.edgeData,
+          origin: "manual",
+          source_annotation: "Found in financial records",
+        },
+      }),
+    );
+
+    expect(screen.getByText("Evidence:")).toBeTruthy();
+    expect(screen.getByText("Found in financial records")).toBeTruthy();
+  });
+
   it("renders clickable entity links when onNavigateToEntity is provided", async () => {
     const onNavigateToEntity = vi.fn();
     render(

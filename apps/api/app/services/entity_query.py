@@ -5,7 +5,7 @@ from neo4j.exceptions import ConstraintError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.exceptions import EntityDuplicateError
+from app.exceptions import EntityDuplicateError, EntityNotFoundError
 from app.models.document import Document
 from app.schemas.entity import (
     EntityDetailResponse,
@@ -15,6 +15,7 @@ from app.schemas.entity import (
     EntitySource,
     EntityTypeSummary,
 )
+from app.schemas.relationship import RelationshipResponse
 
 
 class EntityQueryService:
@@ -180,6 +181,98 @@ class EntityQueryService:
 
         # Return fresh detail
         return await self.get_entity_detail(investigation_id, entity_id)
+
+    async def create_relationship(
+        self,
+        investigation_id: uuid.UUID,
+        source_entity_id: str,
+        target_entity_id: str,
+        rel_type: str,
+        source_annotation: str | None = None,
+    ) -> RelationshipResponse:
+        """Create a manual relationship between two entities in Neo4j.
+
+        Returns existing relationship with already_existed=True if a duplicate is found.
+        Raises EntityNotFoundError if either entity does not exist.
+        """
+        inv_id_str = str(investigation_id)
+
+        async with self.neo4j_driver.session() as session:
+            # Verify both entities exist
+            source_entity = await session.execute_read(
+                _fetch_entity, source_entity_id, inv_id_str
+            )
+            if source_entity is None:
+                raise EntityNotFoundError(source_entity_id)
+
+            target_entity = await session.execute_read(
+                _fetch_entity, target_entity_id, inv_id_str
+            )
+            if target_entity is None:
+                raise EntityNotFoundError(target_entity_id)
+
+            # Check for existing duplicate
+            existing = await session.execute_read(
+                _fetch_existing_relationship,
+                source_entity_id,
+                target_entity_id,
+                rel_type,
+                inv_id_str,
+            )
+            if existing is not None:
+                logger.info(
+                    "Duplicate relationship found, returning existing",
+                    source_entity_id=source_entity_id,
+                    target_entity_id=target_entity_id,
+                    type=rel_type,
+                    investigation_id=inv_id_str,
+                )
+                return RelationshipResponse(
+                    id=existing.get("id") or f"{source_entity_id}-{rel_type}-{target_entity_id}",
+                    source_entity_id=source_entity_id,
+                    target_entity_id=target_entity_id,
+                    source_entity_name=source_entity["name"],
+                    target_entity_name=target_entity["name"],
+                    type=rel_type,
+                    confidence_score=existing.get("confidence_score") or 0.0,
+                    source=existing.get("source") or "extracted",
+                    source_annotation=existing.get("source_annotation"),
+                    already_existed=True,
+                )
+
+            # Create new relationship
+            relationship_id = str(uuid.uuid4())
+            await session.execute_write(
+                _create_relationship,
+                source_entity_id,
+                target_entity_id,
+                rel_type,
+                relationship_id,
+                source_annotation,
+                inv_id_str,
+            )
+
+        logger.info(
+            "Manual relationship created",
+            relationship_id=relationship_id,
+            source_entity_id=source_entity_id,
+            target_entity_id=target_entity_id,
+            type=rel_type,
+            investigation_id=inv_id_str,
+        )
+
+        return RelationshipResponse(
+            id=relationship_id,
+            source_entity_id=source_entity_id,
+            target_entity_id=target_entity_id,
+            source_entity_name=source_entity["name"],
+            target_entity_name=target_entity["name"],
+            type=rel_type,
+            confidence_score=1.0,
+            source="manual",
+            source_annotation=source_annotation,
+            already_existed=False,
+        )
 
     async def get_entity_detail(
         self, investigation_id: uuid.UUID, entity_id: str
@@ -408,5 +501,66 @@ async def _update_entity(
         investigation_id=investigation_id,
         new_name=new_name,
         old_name=old_name_to_alias,
+        source_annotation=source_annotation,
+    )
+
+
+async def _fetch_existing_relationship(
+    tx,
+    source_entity_id: str,
+    target_entity_id: str,
+    rel_type: str,
+    investigation_id: str,
+):
+    """Check if a relationship of the given type already exists between two entities."""
+    # Dynamic relationship type in Cypher (safe: validated upstream as UPPER_SNAKE_CASE)
+    query = (
+        "MATCH (src:Person|Organization|Location "
+        "{id: $source_id, investigation_id: $inv_id})"
+        f"-[r:{rel_type}]->"
+        "(tgt:Person|Organization|Location "
+        "{id: $target_id, investigation_id: $inv_id}) "
+        "RETURN r.id AS id, r.confidence_score AS confidence_score, "
+        "r.source AS source, r.source_annotation AS source_annotation"
+    )
+    result = await tx.run(
+        query,
+        source_id=source_entity_id,
+        target_id=target_entity_id,
+        inv_id=investigation_id,
+    )
+    return await result.single()
+
+
+async def _create_relationship(
+    tx,
+    source_entity_id: str,
+    target_entity_id: str,
+    rel_type: str,
+    relationship_id: str,
+    source_annotation: str | None,
+    investigation_id: str,
+):
+    """Create a manual relationship between two entity nodes in Neo4j."""
+    # Dynamic relationship type in Cypher (safe: validated upstream as UPPER_SNAKE_CASE)
+    query = (
+        "MATCH (src:Person|Organization|Location "
+        "{id: $source_id, investigation_id: $inv_id}) "
+        "MATCH (tgt:Person|Organization|Location "
+        "{id: $target_id, investigation_id: $inv_id}) "
+        f"CREATE (src)-[r:{rel_type} {{"
+        "  id: $rel_id,"
+        "  confidence_score: 1.0,"
+        "  source: 'manual',"
+        "  source_annotation: $source_annotation,"
+        "  created_at: datetime()"
+        "}]->(tgt)"
+    )
+    await tx.run(
+        query,
+        source_id=source_entity_id,
+        target_id=target_entity_id,
+        inv_id=investigation_id,
+        rel_id=relationship_id,
         source_annotation=source_annotation,
     )

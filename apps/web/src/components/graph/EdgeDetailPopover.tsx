@@ -7,6 +7,8 @@ interface EdgeData {
   target: string;
   type: string;
   confidence_score: number;
+  origin?: string;
+  source_annotation?: string | null;
 }
 
 interface EdgeDetailPopoverProps {
@@ -83,9 +85,16 @@ export function EdgeDetailPopover({
     >
       {/* Header */}
       <div className="flex items-center justify-between gap-2 p-3 pb-2">
-        <span className="rounded bg-[var(--bg-hover)] px-2 py-0.5 text-xs font-medium text-[var(--text-primary)]">
-          {edgeData.type}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="rounded bg-[var(--bg-hover)] px-2 py-0.5 text-xs font-medium text-[var(--text-primary)]">
+            {edgeData.type}
+          </span>
+          {edgeData.origin === "manual" && (
+            <span className="rounded bg-[var(--bg-hover)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-muted)] border border-[var(--border-subtle)]">
+              Manual
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-[var(--text-secondary)]">
             {confidencePercent}%
@@ -113,9 +122,16 @@ export function EdgeDetailPopover({
         </div>
       </div>
 
-      {/* Evidence links */}
+      {/* Evidence / Source annotation */}
       <div className="border-t border-[var(--border-subtle)] px-3 py-2">
-        {onNavigateToEntity ? (
+        {edgeData.source_annotation ? (
+          <div className="flex flex-col gap-1">
+            <p className="text-xs text-[var(--text-muted)]">Evidence:</p>
+            <p className="text-xs text-[var(--text-secondary)] italic">
+              {edgeData.source_annotation}
+            </p>
+          </div>
+        ) : onNavigateToEntity ? (
           <div className="flex flex-col gap-1">
             <p className="text-xs text-[var(--text-muted)]">
               View source entities for evidence:

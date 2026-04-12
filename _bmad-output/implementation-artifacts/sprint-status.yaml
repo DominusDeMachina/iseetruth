@@ -107,7 +107,7 @@ development_status:
   # Epic 8: Manual Entity Curation & Disambiguation
   epic-8: in-progress
   8-1-manual-entity-creation-editing: done
-  8-2-manual-relationship-creation: backlog
+  8-2-manual-relationship-creation: done
   8-3-entity-merge-with-relationship-preservation: backlog
   8-4-automated-duplicate-entity-detection-merge-suggestions: backlog
   epic-8-retrospective: optional
