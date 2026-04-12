@@ -1,6 +1,6 @@
-import { lazy, Suspense, useState, useCallback, useRef } from "react";
+import { lazy, Suspense, useState, useCallback, useRef, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, RefreshCw, FileText } from "lucide-react";
+import { ArrowLeft, RefreshCw, FileText, Wifi, WifiOff } from "lucide-react";
 import { useInvestigation } from "@/hooks/useInvestigations";
 import {
   useDocuments,
@@ -17,6 +17,7 @@ import { DocumentTextViewer } from "@/components/investigation/DocumentTextViewe
 import { ProcessingDashboard } from "@/components/investigation/ProcessingDashboard";
 import { EntitySummaryBar } from "@/components/investigation/EntitySummaryBar";
 import { SplitView } from "@/components/layout/SplitView";
+import { PanelErrorBoundary } from "@/components/layout/PanelErrorBoundary";
 import { QAPanel } from "@/components/qa/QAPanel";
 import { CitationModal } from "@/components/qa/CitationModal";
 import {
@@ -69,6 +70,28 @@ function InvestigationDetail() {
   const hasFailed = documents.some((d) => d.status === "failed");
   const sseEnabled = hasProcessing || uploadMutation.isPending || hasFailed;
   const { isConnected, connectionError, discoveredEntities } = useSSE(id, sseEnabled);
+
+  // Track SSE connection error transitions for toast notifications
+  const prevConnectionError = useRef(false);
+  const [sseToastVisible, setSseToastVisible] = useState(false);
+  const [sseRecoveryToastVisible, setSseRecoveryToastVisible] = useState(false);
+  useEffect(() => {
+    if (connectionError && !prevConnectionError.current) {
+      setSseToastVisible(true);
+    }
+    if (!connectionError && prevConnectionError.current) {
+      setSseToastVisible(false);
+      setSseRecoveryToastVisible(true);
+    }
+    prevConnectionError.current = connectionError;
+  }, [connectionError]);
+
+  // Auto-dismiss recovery toast after 5s (matching ServiceNotifications pattern)
+  useEffect(() => {
+    if (!sseRecoveryToastVisible) return;
+    const timer = setTimeout(() => setSseRecoveryToastVisible(false), 5000);
+    return () => clearTimeout(timer);
+  }, [sseRecoveryToastVisible]);
 
   const handleConversationUpdate = useCallback(
     (entries: ConversationEntry[]) => {
@@ -252,36 +275,49 @@ function InvestigationDetail() {
     return (
       <div className="flex flex-col h-full">
         <div className="shrink-0 px-1 pb-4">{header}</div>
+
+        {/* SSE connection degraded banner */}
+        {connectionError && sseEnabled && (
+          <div className="shrink-0 mx-1 mb-2 flex items-center gap-2 rounded-md border-l-4 border-[var(--status-warning)] bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+            <WifiOff className="size-3.5 shrink-0 text-[var(--status-warning)]" />
+            Live updates temporarily unavailable — showing cached data
+          </div>
+        )}
+
         <div className="flex-1 min-h-0">
           <SplitView
             left={
-              <QAPanel
-                investigationId={id}
-                onEntityClick={handleEntityClick}
-                onCitationClick={handleCitationClick}
-                prefillQuestion={prefillQuestion}
-                onQueryStart={() => setHighlightEntities([])}
-                onConversationUpdate={handleConversationUpdate}
-                disabled={hasProcessing}
-                disabledReason="Documents are still processing..."
-              />
+              <PanelErrorBoundary panelName="Q&A Panel">
+                <QAPanel
+                  investigationId={id}
+                  onEntityClick={handleEntityClick}
+                  onCitationClick={handleCitationClick}
+                  prefillQuestion={prefillQuestion}
+                  onQueryStart={() => setHighlightEntities([])}
+                  onConversationUpdate={handleConversationUpdate}
+                  disabled={hasProcessing}
+                  disabledReason="Documents are still processing..."
+                />
+              </PanelErrorBoundary>
             }
             right={
-              <Suspense
-                fallback={
-                  <div className="flex h-full items-center justify-center">
-                    <RefreshCw className="size-6 animate-spin text-[var(--text-muted)]" />
-                  </div>
-                }
-              >
-                <GraphCanvas
-                  investigationId={id}
-                  documents={documentsData?.items}
-                  onAskAboutEntity={handleAskAboutEntity}
-                  highlightEntities={highlightEntities}
-                  onHighlightClear={() => setHighlightEntities([])}
-                />
-              </Suspense>
+              <PanelErrorBoundary panelName="Graph Panel">
+                <Suspense
+                  fallback={
+                    <div className="flex h-full items-center justify-center">
+                      <RefreshCw className="size-6 animate-spin text-[var(--text-muted)]" />
+                    </div>
+                  }
+                >
+                  <GraphCanvas
+                    investigationId={id}
+                    documents={documentsData?.items}
+                    onAskAboutEntity={handleAskAboutEntity}
+                    highlightEntities={highlightEntities}
+                    onHighlightClear={() => setHighlightEntities([])}
+                  />
+                </Suspense>
+              </PanelErrorBoundary>
             }
           />
         </div>
@@ -318,6 +354,37 @@ function InvestigationDetail() {
         {citationNotFound && (
           <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-[var(--status-error)] px-4 py-2 text-sm text-white shadow-lg">
             Citation not found — the answer may have changed.
+          </div>
+        )}
+
+        {/* SSE connection lost toast */}
+        {sseToastVisible && connectionError && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="fixed bottom-16 right-6 z-50 flex items-center gap-3 rounded-lg border-l-4 border-[var(--status-error)] bg-[var(--bg-elevated)] px-4 py-3 text-sm text-[var(--text-primary)] shadow-lg"
+          >
+            <WifiOff className="size-4 shrink-0 text-[var(--status-error)]" />
+            <span>Live updates connection lost. Data may be stale.</span>
+            <button
+              onClick={() => setSseToastVisible(false)}
+              className="ml-2 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              aria-label="Dismiss notification"
+            >
+              &times;
+            </button>
+          </div>
+        )}
+
+        {/* SSE connection recovered toast */}
+        {sseRecoveryToastVisible && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="fixed bottom-16 right-6 z-50 flex items-center gap-3 rounded-lg border-l-4 border-[var(--status-success)] bg-[var(--bg-elevated)] px-4 py-3 text-sm text-[var(--text-primary)] shadow-lg"
+          >
+            <Wifi className="size-4 shrink-0 text-[var(--status-success)]" />
+            <span>Live updates restored</span>
           </div>
         )}
 

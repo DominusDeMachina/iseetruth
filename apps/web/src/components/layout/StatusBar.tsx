@@ -21,27 +21,35 @@ export function StatusBar() {
     icon = <CheckCircle2 className="h-3.5 w-3.5" />;
     label = "All systems operational";
     colorClass = "text-[var(--status-success)]";
-  } else if (data.status === "degraded") {
-    icon = <AlertTriangle className="h-3.5 w-3.5" />;
-    // Build specific degradation label
+  } else {
+    // Build service status breakdown
     const downServices: string[] = [];
     if (data.services) {
       for (const [name, svc] of Object.entries(data.services)) {
         if (svc.status !== "healthy") downServices.push(name);
       }
     }
-    if (downServices.includes("qdrant")) {
+
+    // Critical = core infrastructure down (postgres or redis)
+    const isCritical = downServices.includes("postgres") || downServices.includes("redis");
+
+    if (isCritical) {
+      icon = <XCircle className="h-3.5 w-3.5" />;
+      label = "System critical — core services down";
+      colorClass = "text-[var(--status-error)]";
+    } else if (downServices.includes("qdrant") && downServices.length === 1) {
+      icon = <AlertTriangle className="h-3.5 w-3.5" />;
       label = "Reduced search capability";
+      colorClass = "text-[var(--status-warning)]";
     } else if (downServices.length > 0) {
+      icon = <AlertTriangle className="h-3.5 w-3.5" />;
       label = `System degraded — ${downServices.join(", ")} unavailable`;
+      colorClass = "text-[var(--status-warning)]";
     } else {
-      label = "System degraded";
+      icon = <XCircle className="h-3.5 w-3.5" />;
+      label = "System unhealthy";
+      colorClass = "text-[var(--status-error)]";
     }
-    colorClass = "text-[var(--status-warning)]";
-  } else {
-    icon = <XCircle className="h-3.5 w-3.5" />;
-    label = "System unhealthy";
-    colorClass = "text-[var(--status-error)]";
   }
 
   return (

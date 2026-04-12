@@ -24,6 +24,7 @@ export interface ServiceNotification {
 interface UseSystemSSEReturn {
   notifications: ServiceNotification[];
   dismissNotification: (id: string) => void;
+  connectionHealthy: boolean;
 }
 
 const SERVICE_LABELS: Record<string, string> = {
@@ -38,9 +39,13 @@ const SERVICE_LABELS: Record<string, string> = {
  * Global SSE hook for system-level service status changes.
  * Invalidates health query cache on any transition and tracks notifications.
  */
+const MAX_SYSTEM_RECONNECT_FAILURES = 3;
+
 export function useSystemSSE(): UseSystemSSEReturn {
   const queryClient = useQueryClient();
   const [notifications, setNotifications] = useState<ServiceNotification[]>([]);
+  const [connectionHealthy, setConnectionHealthy] = useState(true);
+  const reconnectCountRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
 
   const dismissNotification = useCallback((id: string) => {
@@ -67,6 +72,16 @@ export function useSystemSSE(): UseSystemSSEReturn {
     fetchEventSource("/api/v1/events/system", {
       signal: ctrl.signal,
       openWhenHidden: true,
+
+      async onopen(response) {
+        if (!response.ok) {
+          throw new Error(
+            `System SSE connection failed: ${response.status}`,
+          );
+        }
+        reconnectCountRef.current = 0;
+        setConnectionHealthy(true);
+      },
 
       onmessage(ev) {
         let event: ServiceStatusEvent;
@@ -105,7 +120,11 @@ export function useSystemSSE(): UseSystemSSEReturn {
       },
 
       onerror() {
-        // Silently retry — system SSE is best-effort
+        reconnectCountRef.current += 1;
+        if (reconnectCountRef.current >= MAX_SYSTEM_RECONNECT_FAILURES) {
+          setConnectionHealthy(false);
+        }
+        // Return undefined to use default retry behavior
       },
     });
 
@@ -114,5 +133,5 @@ export function useSystemSSE(): UseSystemSSEReturn {
     };
   }, [queryClient]);
 
-  return { notifications, dismissNotification };
+  return { notifications, dismissNotification, connectionHealthy };
 }

@@ -86,5 +86,5 @@ development_status:
   6-1-failed-document-detection-manual-retry: done
   6-2-auto-retry-on-service-recovery: done
   6-3-per-service-graceful-degradation: done
-  6-4-service-status-display-error-boundaries: backlog
+  6-4-service-status-display-error-boundaries: done
   epic-6-retrospective: optional

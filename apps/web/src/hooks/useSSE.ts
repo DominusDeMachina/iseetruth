@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import { useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api-client";
 import type { DocumentListResponse, DocumentWithProgress } from "@/hooks/useDocuments";
 
 interface SSEEvent {
@@ -144,7 +145,7 @@ export function useSSE(
   );
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || connectionError) {
       setIsConnected(false);
       return;
     }
@@ -203,7 +204,52 @@ export function useSSE(
       setIsConnected(false);
       setDiscoveredEntities([]);
     };
-  }, [investigationId, enabled, queryClient, updateDocumentCache]);
+  }, [investigationId, enabled, connectionError, queryClient, updateDocumentCache]);
+
+  // Polling fallback when SSE connection fails
+  useEffect(() => {
+    if (!connectionError || !enabled) return;
+
+    const POLL_INTERVAL = 10_000;
+    const RECONNECT_INTERVAL = 30_000;
+
+    // Poll documents REST API as fallback
+    const pollTimer = setInterval(async () => {
+      try {
+        const { data } = await api.GET(
+          "/api/v1/investigations/{investigation_id}/documents",
+          { params: { path: { investigation_id: investigationId } } },
+        );
+        if (data) {
+          queryClient.setQueryData(["documents", investigationId], data);
+        }
+      } catch {
+        // Polling is best-effort
+      }
+    }, POLL_INTERVAL);
+
+    // Periodically attempt SSE reconnection
+    const reconnectTimer = setInterval(async () => {
+      try {
+        const resp = await fetch("/api/v1/health/", {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (resp.ok) {
+          // Server is reachable — reset error state so the main SSE effect reconnects
+          reconnectCountRef.current = 0;
+          setReconnectCount(0);
+          setConnectionError(false);
+        }
+      } catch {
+        // Still down
+      }
+    }, RECONNECT_INTERVAL);
+
+    return () => {
+      clearInterval(pollTimer);
+      clearInterval(reconnectTimer);
+    };
+  }, [connectionError, enabled, investigationId, queryClient]);
 
   return { isConnected, connectionError, reconnectCount, discoveredEntities };
 }

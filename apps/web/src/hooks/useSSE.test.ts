@@ -10,6 +10,14 @@ vi.mock("@microsoft/fetch-event-source", () => ({
   fetchEventSource: (...args: unknown[]) => mockFetchEventSource(...args),
 }));
 
+// Mock api client for polling fallback tests
+const mockApiGet = vi.fn();
+vi.mock("@/lib/api-client", () => ({
+  api: {
+    GET: (...args: unknown[]) => mockApiGet(...args),
+  },
+}));
+
 import { useSSE } from "./useSSE";
 
 function createWrapper() {
@@ -28,6 +36,7 @@ const investigationId = "inv-123";
 describe("useSSE", () => {
   beforeEach(() => {
     mockFetchEventSource.mockReset();
+    mockApiGet.mockReset();
     // Default: resolve after capturing callbacks
     mockFetchEventSource.mockImplementation(() => new Promise(() => {}));
   });
@@ -424,5 +433,140 @@ describe("useSSE", () => {
 
     expect(result.current.reconnectCount).toBe(0);
     expect(result.current.connectionError).toBe(false);
+  });
+
+  describe("polling fallback", () => {
+    function triggerConnectionError(errorCallback: () => void) {
+      errorCallback();
+      errorCallback();
+      expect(() => errorCallback()).toThrow(
+        "SSE stopped after 3 failed reconnects",
+      );
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      mockApiGet.mockResolvedValue({ data: { items: [], total: 0 } });
+      // Default: reconnect probe fails
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockRejectedValue(new Error("still down")),
+      );
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    });
+
+    it("polls documents REST API every 10s when connectionError is true", async () => {
+      const { wrapper } = createWrapper();
+      let errorCallback: (() => void) | undefined;
+
+      mockFetchEventSource.mockImplementation(
+        async (_url: string, opts: Record<string, unknown>) => {
+          errorCallback = opts.onerror as () => void;
+          return new Promise(() => {});
+        },
+      );
+
+      renderHook(() => useSSE(investigationId, true), { wrapper });
+
+      await act(async () => {
+        vi.advanceTimersByTime(0);
+      });
+      expect(errorCallback).toBeDefined();
+
+      act(() => {
+        triggerConnectionError(errorCallback!);
+      });
+
+      // Before poll interval — no calls
+      await act(async () => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(mockApiGet).not.toHaveBeenCalled();
+
+      // After poll interval — should have called
+      await act(async () => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(mockApiGet).toHaveBeenCalledWith(
+        "/api/v1/investigations/{investigation_id}/documents",
+        expect.objectContaining({
+          params: { path: { investigation_id: investigationId } },
+        }),
+      );
+    });
+
+    it("probes health endpoint for reconnection every 30s", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+      vi.stubGlobal("fetch", mockFetch);
+
+      const { wrapper } = createWrapper();
+      let errorCallback: (() => void) | undefined;
+
+      mockFetchEventSource.mockImplementation(
+        async (_url: string, opts: Record<string, unknown>) => {
+          errorCallback = opts.onerror as () => void;
+          return new Promise(() => {});
+        },
+      );
+
+      renderHook(() => useSSE(investigationId, true), { wrapper });
+
+      await act(async () => {
+        vi.advanceTimersByTime(0);
+      });
+
+      act(() => {
+        triggerConnectionError(errorCallback!);
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(30_000);
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/v1/health/",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+
+    it("resets connectionError when health probe succeeds", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+      vi.stubGlobal("fetch", mockFetch);
+
+      const { wrapper } = createWrapper();
+      let errorCallback: (() => void) | undefined;
+
+      mockFetchEventSource.mockImplementation(
+        async (_url: string, opts: Record<string, unknown>) => {
+          errorCallback = opts.onerror as () => void;
+          return new Promise(() => {});
+        },
+      );
+
+      const { result } = renderHook(() => useSSE(investigationId, true), {
+        wrapper,
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(0);
+      });
+
+      act(() => {
+        triggerConnectionError(errorCallback!);
+      });
+
+      expect(result.current.connectionError).toBe(true);
+
+      // Health probe succeeds at 30s — use async variant to flush promises
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+
+      expect(result.current.connectionError).toBe(false);
+    });
   });
 });

@@ -103,4 +103,71 @@ describe("StatusBar", () => {
 
     expect(screen.getByText("Backend unreachable")).toBeInTheDocument();
   });
+
+  it("renders critical state when postgres is down", () => {
+    mockUseHealthStatus.mockReturnValue({
+      data: {
+        status: "unhealthy",
+        services: {
+          postgres: { status: "unavailable" },
+          neo4j: { status: "healthy" },
+          qdrant: { status: "healthy" },
+          redis: { status: "healthy" },
+          ollama: { status: "healthy" },
+        },
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithProviders(<StatusBar />);
+
+    expect(
+      screen.getByText("System critical — core services down"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders critical state when redis is down", () => {
+    mockUseHealthStatus.mockReturnValue({
+      data: {
+        status: "unhealthy",
+        services: {
+          postgres: { status: "healthy" },
+          neo4j: { status: "healthy" },
+          qdrant: { status: "healthy" },
+          redis: { status: "unavailable" },
+          ollama: { status: "healthy" },
+        },
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithProviders(<StatusBar />);
+
+    expect(
+      screen.getByText("System critical — core services down"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders degraded (not critical) when only ollama is down", () => {
+    mockUseHealthStatus.mockReturnValue({
+      data: {
+        status: "degraded",
+        services: {
+          postgres: { status: "healthy" },
+          neo4j: { status: "healthy" },
+          qdrant: { status: "healthy" },
+          redis: { status: "healthy" },
+          ollama: { status: "unavailable" },
+        },
+      },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithProviders(<StatusBar />);
+
+    expect(screen.getByText(/degraded.*ollama/i)).toBeInTheDocument();
+  });
 });
