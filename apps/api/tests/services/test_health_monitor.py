@@ -1,6 +1,5 @@
 """Tests for HealthMonitorService — service.status SSE event publishing."""
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,7 +11,7 @@ from app.schemas.health import (
     ServiceStatus,
     StatusEnum,
 )
-from app.services.health_monitor import HealthMonitorService, REDIS_STATE_KEY
+from app.services.health_monitor import HealthMonitorService
 
 
 def _build_health_response(**overrides) -> HealthResponse:
@@ -194,3 +193,13 @@ class TestHealthMonitorCheckAndPublish:
                 call[0][2]["service"] for call in mock_publisher.publish.call_args_list
             }
             assert services_notified == {"neo4j", "qdrant"}
+
+    @pytest.mark.asyncio
+    async def test_polling_guard_prevents_concurrent_polls(self):
+        """If _polling is True, _check_and_publish should skip."""
+        monitor = HealthMonitorService()
+        monitor._polling = True
+
+        with patch.object(monitor._health, "get_health") as mock_health:
+            await monitor._check_and_publish()
+            mock_health.assert_not_called()

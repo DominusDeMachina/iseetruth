@@ -36,9 +36,9 @@ export function QAPanel({
   } = useQueryStream(investigationId);
   const { data: healthData } = useHealthStatus();
 
-  // Ollama unavailability disables Q&A
+  // Ollama unavailability disables Q&A (only after health data has loaded)
   const ollamaUnavailable =
-    healthData?.services?.ollama?.status !== "healthy";
+    healthData != null && healthData.services?.ollama?.status !== "healthy";
   const isDisabled =
     disabled || ollamaUnavailable;
   const reason = disabled

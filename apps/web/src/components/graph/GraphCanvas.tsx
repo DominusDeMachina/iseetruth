@@ -51,11 +51,11 @@ export function GraphCanvas({
   const { cy, isReady, error: cyError, reducedMotion } = useCytoscape(containerRef);
   const { data: healthData } = useHealthStatus();
 
-  // Per-service health status for degradation UX
+  // Per-service health status for degradation UX (only after health data loads)
   const neo4jUnavailable =
-    healthData?.services?.neo4j?.status === "unavailable";
+    healthData != null && healthData.services?.neo4j?.status === "unavailable";
   const ollamaUnavailable =
-    healthData?.services?.ollama?.status !== "healthy";
+    healthData != null && healthData.services?.ollama?.status !== "healthy";
 
   // Filter state
   const [entityTypes, setEntityTypes] = useState<string[]>([]);

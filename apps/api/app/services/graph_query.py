@@ -24,7 +24,7 @@ class GraphQueryService:
         try:
             async with self.neo4j_driver.session() as session:
                 yield session
-        except (ServiceUnavailable, SessionExpired, ConnectionRefusedError, OSError) as exc:
+        except (ServiceUnavailable, SessionExpired, ConnectionRefusedError, ConnectionError) as exc:
             logger.error("Neo4j unavailable", error=str(exc))
             raise GraphUnavailableError("Graph database unavailable")
 

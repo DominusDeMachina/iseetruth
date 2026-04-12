@@ -97,7 +97,10 @@ export function useSystemSSE(): UseSystemSSEReturn {
           const filtered = prev.filter(
             (n) => !n.id.startsWith(`${service}-`) && n.service !== label,
           );
-          return [...filtered, notification];
+          // Cap at 10 notifications to prevent unbounded growth
+          const capped =
+            filtered.length >= 10 ? filtered.slice(-9) : filtered;
+          return [...capped, notification];
         });
       },
 

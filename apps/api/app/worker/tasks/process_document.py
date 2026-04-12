@@ -66,12 +66,14 @@ def process_document_task(
             # Fail fast: check Ollama availability before heavy processing
             ollama_client = OllamaClient(settings.ollama_base_url)
             if not ollama_client.check_available():
-                document.status = "queued"
+                document.status = "failed"
                 document.failed_stage = "preflight"
-                document.error_message = "Waiting for LLM service"
+                document.error_message = (
+                    "LLM service unavailable — retry when service recovers"
+                )
                 session.commit()
                 logger.warning(
-                    "Ollama unavailable, document stays queued for later retry",
+                    "Ollama unavailable, document marked failed for retry",
                     document_id=document_id,
                 )
                 _publish_safe(

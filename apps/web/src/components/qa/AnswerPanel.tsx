@@ -282,6 +282,13 @@ export function AnswerPanel({
                   <span className="inline-block w-[2px] h-[1em] bg-[var(--text-primary)] align-text-bottom animate-pulse ml-0.5" />
                 </div>
               )}
+
+              {/* Degradation notice during streaming */}
+              {entry.degradedMessage && (
+                <p className="mt-1 text-xs text-[var(--status-warning)]">
+                  {entry.degradedMessage}
+                </p>
+              )}
             </div>
           );
         }
