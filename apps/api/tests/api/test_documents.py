@@ -2,7 +2,7 @@
 
 import io
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.exceptions import DocumentNotFoundError, DocumentNotReadyError, DocumentNotRetryableError
 from app.services.investigation import InvestigationNotFoundError
@@ -41,16 +41,17 @@ def test_upload_multiple_pdfs_returns_201(
     assert len(data["items"]) == 2
 
 
-def test_upload_non_pdf_rejected_422(
+def test_upload_unsupported_type_rejected_422(
     investigation_client, mock_document_service, sample_investigation_id
 ):
     response = investigation_client.post(
         f"/api/v1/investigations/{sample_investigation_id}/documents",
-        files=[("files", ("image.png", io.BytesIO(b"PNG data"), "image/png"))],
+        files=[("files", ("notes.txt", io.BytesIO(b"plain text"), "text/plain"))],
     )
     assert response.status_code == 422
     data = response.json()
     assert data["type"] == "urn:osint:error:invalid_file_type"
+    assert "Accepted: PDF, JPEG, PNG, TIFF" in data["detail"]
 
 
 def test_upload_invalid_magic_bytes_rejected_422(
@@ -64,7 +65,7 @@ def test_upload_invalid_magic_bytes_rejected_422(
     )
     assert response.status_code == 422
     data = response.json()
-    assert "invalid PDF magic bytes" in data["detail"]
+    assert "invalid file magic bytes" in data["detail"]
 
 
 def test_upload_oversized_file_rejected_422(
@@ -85,13 +86,13 @@ def test_upload_oversized_file_rejected_422(
 def test_upload_mixed_valid_and_invalid_files(
     investigation_client, mock_document_service, sample_investigation_id
 ):
-    """Mix of valid PDFs and non-PDFs returns 201 with items and errors."""
+    """Mix of valid files and unsupported types returns 201 with items and errors."""
     pdf_content = b"%PDF-1.4 valid pdf"
     response = investigation_client.post(
         f"/api/v1/investigations/{sample_investigation_id}/documents",
         files=[
             ("files", ("valid.pdf", io.BytesIO(pdf_content), "application/pdf")),
-            ("files", ("image.png", io.BytesIO(b"PNG data"), "image/png")),
+            ("files", ("notes.txt", io.BytesIO(b"plain text"), "text/plain")),
         ],
     )
     assert response.status_code == 201
@@ -99,7 +100,7 @@ def test_upload_mixed_valid_and_invalid_files(
     assert len(data["items"]) == 1
     assert data["items"][0]["filename"] == "test-report.pdf"
     assert len(data["errors"]) == 1
-    assert "image.png" in data["errors"][0]
+    assert "notes.txt" in data["errors"][0]
 
 
 def test_list_documents_returns_200(
@@ -381,3 +382,291 @@ def test_retry_document_wrong_investigation_returns_404(
     assert response.status_code == 404
     data = response.json()
     assert data["type"] == "urn:osint:error:document_not_found"
+
+
+# ---------------------------------------------------------------------------
+# Image upload tests (Story 7.1)
+# ---------------------------------------------------------------------------
+
+
+def _make_image_document(sample_document, **overrides):
+    """Return sample_document with image-specific defaults applied."""
+    sample_document.document_type = overrides.get("document_type", "image")
+    sample_document.filename = overrides.get("filename", "scan.jpg")
+    sample_document.page_count = overrides.get("page_count", 1)
+    for k, v in overrides.items():
+        setattr(sample_document, k, v)
+    return sample_document
+
+
+def test_upload_jpeg_returns_201_with_image_type(
+    investigation_client, mock_document_service, sample_investigation_id, sample_document
+):
+    """Upload JPEG file returns 201 with document_type: image."""
+    _make_image_document(sample_document)
+    jpeg_content = b"\xff\xd8\xff\xe0 fake jpeg content"
+    response = investigation_client.post(
+        f"/api/v1/investigations/{sample_investigation_id}/documents",
+        files=[("files", ("scan.jpg", io.BytesIO(jpeg_content), "image/jpeg"))],
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["document_type"] == "image"
+    mock_document_service.upload_document.assert_called_once()
+    call_kwargs = mock_document_service.upload_document.call_args
+    assert call_kwargs.kwargs.get("document_type") == "image" or (
+        len(call_kwargs.args) >= 3 and call_kwargs.args[2] == "image"
+    )
+
+
+def test_upload_png_returns_201_with_image_type(
+    investigation_client, mock_document_service, sample_investigation_id, sample_document
+):
+    """Upload PNG file returns 201 with document_type: image."""
+    _make_image_document(sample_document, filename="screenshot.png")
+    # PNG magic bytes: \x89PNG
+    png_content = b"\x89PNG\r\n\x1a\n fake png content"
+    response = investigation_client.post(
+        f"/api/v1/investigations/{sample_investigation_id}/documents",
+        files=[("files", ("screenshot.png", io.BytesIO(png_content), "image/png"))],
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["document_type"] == "image"
+
+
+def test_upload_tiff_le_returns_201_with_image_type(
+    investigation_client, mock_document_service, sample_investigation_id, sample_document
+):
+    """Upload TIFF (little-endian) file returns 201 with document_type: image."""
+    _make_image_document(sample_document, filename="scan.tiff")
+    # TIFF little-endian magic bytes: II\x2a\x00
+    tiff_content = b"II\x2a\x00 fake tiff content"
+    response = investigation_client.post(
+        f"/api/v1/investigations/{sample_investigation_id}/documents",
+        files=[("files", ("scan.tiff", io.BytesIO(tiff_content), "image/tiff"))],
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["document_type"] == "image"
+
+
+def test_upload_tiff_be_returns_201_with_image_type(
+    investigation_client, mock_document_service, sample_investigation_id, sample_document
+):
+    """Upload TIFF (big-endian) file returns 201 with document_type: image."""
+    _make_image_document(sample_document, filename="scan.tif")
+    # TIFF big-endian magic bytes: MM\x00\x2a
+    tiff_content = b"MM\x00\x2a fake tiff content"
+    response = investigation_client.post(
+        f"/api/v1/investigations/{sample_investigation_id}/documents",
+        files=[("files", ("scan.tif", io.BytesIO(tiff_content), "image/tiff"))],
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["document_type"] == "image"
+
+
+def test_upload_unsupported_txt_rejected_422(
+    investigation_client, mock_document_service, sample_investigation_id
+):
+    """Upload .txt file returns 422 with RFC 7807 error."""
+    response = investigation_client.post(
+        f"/api/v1/investigations/{sample_investigation_id}/documents",
+        files=[("files", ("notes.txt", io.BytesIO(b"plain text"), "text/plain"))],
+    )
+    assert response.status_code == 422
+    data = response.json()
+    assert data["type"] == "urn:osint:error:invalid_file_type"
+    assert "Accepted: PDF, JPEG, PNG, TIFF" in data["detail"]
+
+
+def test_upload_mixed_pdf_and_jpeg(
+    investigation_client, mock_document_service, sample_investigation_id, sample_document
+):
+    """Mixed upload of 1 PDF + 1 JPEG returns 201 with correct types."""
+    # First call returns PDF doc, second returns image doc
+    pdf_doc = MagicMock()
+    pdf_doc.id = sample_document.id
+    pdf_doc.investigation_id = sample_document.investigation_id
+    pdf_doc.filename = "report.pdf"
+    pdf_doc.size_bytes = 1024
+    pdf_doc.sha256_checksum = "a" * 64
+    pdf_doc.document_type = "pdf"
+    pdf_doc.status = "queued"
+    pdf_doc.page_count = 5
+    pdf_doc.entity_count = None
+    pdf_doc.extraction_confidence = None
+    pdf_doc.extracted_text = None
+    pdf_doc.error_message = None
+    pdf_doc.failed_stage = None
+    pdf_doc.retry_count = 0
+    pdf_doc.created_at = sample_document.created_at
+    pdf_doc.updated_at = sample_document.updated_at
+
+    img_doc = MagicMock()
+    img_doc.id = uuid.uuid4()
+    img_doc.investigation_id = sample_document.investigation_id
+    img_doc.filename = "scan.jpg"
+    img_doc.size_bytes = 2048
+    img_doc.sha256_checksum = "b" * 64
+    img_doc.document_type = "image"
+    img_doc.status = "queued"
+    img_doc.page_count = 1
+    img_doc.entity_count = None
+    img_doc.extraction_confidence = None
+    img_doc.extracted_text = None
+    img_doc.error_message = None
+    img_doc.failed_stage = None
+    img_doc.retry_count = 0
+    img_doc.created_at = sample_document.created_at
+    img_doc.updated_at = sample_document.updated_at
+
+    mock_document_service.upload_document = AsyncMock(side_effect=[pdf_doc, img_doc])
+
+    pdf_content = b"%PDF-1.4 fake pdf"
+    jpeg_content = b"\xff\xd8\xff\xe0 fake jpeg"
+    response = investigation_client.post(
+        f"/api/v1/investigations/{sample_investigation_id}/documents",
+        files=[
+            ("files", ("report.pdf", io.BytesIO(pdf_content), "application/pdf")),
+            ("files", ("scan.jpg", io.BytesIO(jpeg_content), "image/jpeg")),
+        ],
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert len(data["items"]) == 2
+    types = {item["document_type"] for item in data["items"]}
+    assert types == {"pdf", "image"}
+
+
+# ---------------------------------------------------------------------------
+# ImageExtractionService unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_image_extraction_service_returns_text_with_page_marker():
+    """ImageExtractionService wraps OCR text in page marker format."""
+    with patch("app.services.image_extraction.Image") as mock_pil, \
+         patch("app.services.image_extraction.pytesseract") as mock_tess:
+        mock_pil.open.return_value = MagicMock()
+        mock_tess.image_to_string.return_value = "Hello World"
+
+        from app.services.image_extraction import ImageExtractionService
+        from pathlib import Path
+
+        service = ImageExtractionService()
+        result = service.extract_text(Path("/fake/image.jpg"), document_id="test-id")
+
+        assert result == "--- Page 1 ---\nHello World"
+        mock_pil.open.assert_called_once_with(Path("/fake/image.jpg"))
+
+
+def test_image_extraction_service_empty_ocr_returns_empty_string():
+    """Empty OCR result returns empty string, not an error."""
+    with patch("app.services.image_extraction.Image") as mock_pil, \
+         patch("app.services.image_extraction.pytesseract") as mock_tess:
+        mock_pil.open.return_value = MagicMock()
+        mock_tess.image_to_string.return_value = "   \n  "
+
+        from app.services.image_extraction import ImageExtractionService
+        from pathlib import Path
+
+        service = ImageExtractionService()
+        result = service.extract_text(Path("/fake/blank.png"), document_id="test-id")
+
+        assert result == ""
+
+
+def test_process_document_routes_image_to_ocr():
+    """process_document_task routes image documents to ImageExtractionService."""
+    with patch("app.worker.tasks.process_document.SyncSessionLocal") as mock_session_cls, \
+         patch("app.worker.tasks.process_document.ImageExtractionService") as mock_img_svc, \
+         patch("app.worker.tasks.process_document.TextExtractionService") as mock_txt_svc, \
+         patch("app.worker.tasks.process_document.get_settings") as mock_settings, \
+         patch("app.worker.tasks.process_document.OllamaClient") as mock_ollama_cls, \
+         patch("app.worker.tasks.process_document.OllamaEmbeddingClient"), \
+         patch("app.worker.tasks.process_document.EventPublisher") as mock_pub_cls, \
+         patch("app.worker.tasks.process_document.celery_app"), \
+         patch("app.worker.tasks.process_document.ChunkingService") as mock_chunk_svc, \
+         patch("app.worker.tasks.process_document.EntityExtractionService") as mock_extract_svc, \
+         patch("app.worker.tasks.process_document.EmbeddingService") as mock_embed_svc, \
+         patch("app.worker.tasks.process_document.EMBEDDING_MODEL", "test-model"), \
+         patch("neo4j.GraphDatabase") as mock_neo4j, \
+         patch("qdrant_client.QdrantClient") as mock_qdrant, \
+         patch("app.db.qdrant.ensure_qdrant_collection"):
+
+        # Setup settings
+        settings = MagicMock()
+        settings.neo4j_uri = "bolt://localhost:7687"
+        settings.neo4j_auth = "neo4j/password"
+        settings.qdrant_url = "http://localhost:6333"
+        settings.celery_broker_url = "redis://localhost:6379/0"
+        settings.ollama_base_url = "http://localhost:11434"
+        settings.ollama_embedding_url = "http://localhost:11434"
+        mock_settings.return_value = settings
+
+        # Setup session
+        mock_session = MagicMock()
+        mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Setup document
+        doc = MagicMock()
+        doc.document_type = "image"
+        doc.filename = "scan.jpg"
+        doc.investigation_id = "inv-123"
+        doc.id = "doc-456"
+        doc.extracted_text = None
+        mock_session.get.return_value = doc
+
+        # Setup Ollama
+        ollama_instance = MagicMock()
+        ollama_instance.check_available.return_value = True
+        mock_ollama_cls.return_value = ollama_instance
+
+        # Setup publisher
+        mock_publisher = MagicMock()
+        mock_pub_cls.return_value = mock_publisher
+
+        # Setup neo4j
+        mock_neo4j.driver.return_value = MagicMock()
+
+        # Setup extraction service to return text
+        mock_img_instance = MagicMock()
+        mock_img_instance.extract_text.return_value = "--- Page 1 ---\nExtracted text"
+        mock_img_svc.return_value = mock_img_instance
+
+        # Setup chunking
+        mock_chunk_instance = MagicMock()
+        mock_chunk_instance.chunk_document.return_value = []
+        mock_chunk_svc.return_value = mock_chunk_instance
+
+        # Setup entity extraction
+        mock_extract_instance = MagicMock()
+        summary = MagicMock()
+        summary.entity_count = 0
+        summary.relationship_count = 0
+        summary.average_confidence = None
+        mock_extract_instance.extract_from_chunks.return_value = summary
+        mock_extract_svc.return_value = mock_extract_instance
+
+        # Setup embedding
+        mock_embed_instance = MagicMock()
+        emb_summary = MagicMock()
+        emb_summary.embedded_count = 0
+        emb_summary.failed_count = 0
+        mock_embed_instance.embed_chunks.return_value = emb_summary
+        mock_embed_svc.return_value = mock_embed_instance
+
+        # Import and call - need to reimport to get patched version
+        from app.worker.tasks.process_document import process_document_task
+        process_document_task("doc-456", "inv-123")
+
+        # Verify ImageExtractionService was used, not TextExtractionService
+        mock_img_svc.assert_called_once()
+        mock_txt_svc.assert_not_called()

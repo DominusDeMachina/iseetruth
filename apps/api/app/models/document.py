@@ -17,6 +17,9 @@ class Document(Base):
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     sha256_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    document_type: Mapped[str] = mapped_column(
+        String(10), nullable=False, server_default="pdf"
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)

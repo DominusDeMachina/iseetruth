@@ -21,6 +21,37 @@ router = APIRouter(
 
 MAX_FILE_SIZE = 200 * 1024 * 1024  # 200 MB
 
+ALLOWED_MIME_TYPES = {
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    "image/tiff",
+}
+
+# Magic byte signatures for file type validation
+_MAGIC_SIGNATURES: list[tuple[bytes, str]] = [
+    (b"%PDF", "application/pdf"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"\x89PNG", "image/png"),
+    (b"II\x2a\x00", "image/tiff"),  # TIFF little-endian
+    (b"MM\x00\x2a", "image/tiff"),  # TIFF big-endian
+]
+
+
+def _detect_mime_from_magic(header: bytes) -> str | None:
+    """Return MIME type matching magic bytes, or None."""
+    for sig, mime in _MAGIC_SIGNATURES:
+        if header[: len(sig)] == sig:
+            return mime
+    return None
+
+
+def _mime_to_document_type(mime: str) -> str:
+    """Map MIME type to document_type value."""
+    if mime == "application/pdf":
+        return "pdf"
+    return "image"
+
 
 def _to_response(document, include_text: bool = False) -> DocumentResponse:
     return DocumentResponse(
@@ -29,6 +60,7 @@ def _to_response(document, include_text: bool = False) -> DocumentResponse:
         filename=document.filename,
         size_bytes=document.size_bytes,
         sha256_checksum=document.sha256_checksum,
+        document_type=document.document_type,
         status=document.status,
         page_count=document.page_count,
         entity_count=document.entity_count,
@@ -36,6 +68,7 @@ def _to_response(document, include_text: bool = False) -> DocumentResponse:
         extracted_text=document.extracted_text if include_text else None,
         error_message=document.error_message,
         failed_stage=document.failed_stage,
+        retry_count=document.retry_count,
         created_at=document.created_at,
         updated_at=document.updated_at,
     )
@@ -52,18 +85,26 @@ async def upload_documents(
     errors: list[str] = []
 
     for file in files:
-        # Validate PDF MIME type
-        if file.content_type != "application/pdf":
+        # Validate MIME type
+        if file.content_type not in ALLOWED_MIME_TYPES:
             errors.append(
-                f"Rejected '{file.filename}': not a PDF (got {file.content_type})"
+                f"Rejected '{file.filename}': unsupported file type (got {file.content_type}). "
+                "Accepted: PDF, JPEG, PNG, TIFF"
             )
             continue
 
-        # Validate magic bytes
+        # Validate magic bytes and cross-check against claimed MIME type
         header = await file.read(4)
         await file.seek(0)
-        if header[:4] != b"%PDF":
-            errors.append(f"Rejected '{file.filename}': invalid PDF magic bytes")
+        detected_mime = _detect_mime_from_magic(header)
+        if detected_mime is None:
+            errors.append(f"Rejected '{file.filename}': invalid file magic bytes")
+            continue
+        if _mime_to_document_type(detected_mime) != _mime_to_document_type(file.content_type):
+            errors.append(
+                f"Rejected '{file.filename}': file content does not match declared type "
+                f"(declared {file.content_type}, detected {detected_mime})"
+            )
             continue
 
         # Validate file size
@@ -74,9 +115,14 @@ async def upload_documents(
             )
             continue
 
+        # Determine document type from MIME
+        document_type = _mime_to_document_type(detected_mime)
+
         # Upload with error handling for partial failure resilience
         try:
-            document = await service.upload_document(investigation_id, file)
+            document = await service.upload_document(
+                investigation_id, file, document_type=document_type
+            )
             results.append(_to_response(document))
         except Exception as exc:
             logger.error(

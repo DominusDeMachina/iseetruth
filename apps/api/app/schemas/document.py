@@ -10,6 +10,7 @@ class DocumentResponse(BaseModel):
     filename: str
     size_bytes: int
     sha256_checksum: str
+    document_type: str = "pdf"
     status: str
     page_count: int | None
     entity_count: int | None = None

@@ -203,6 +203,7 @@ def sample_document(sample_document_id, sample_investigation_id):
     doc.filename = "test-report.pdf"
     doc.size_bytes = 102400
     doc.sha256_checksum = "a" * 64
+    doc.document_type = "pdf"
     doc.status = "queued"
     doc.page_count = 5
     doc.entity_count = None

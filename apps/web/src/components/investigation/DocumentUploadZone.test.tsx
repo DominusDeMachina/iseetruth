@@ -12,7 +12,7 @@ describe("DocumentUploadZone", () => {
       />,
     );
     expect(
-      screen.getByText("Drag PDF files here to start your investigation"),
+      screen.getByText("Drag PDFs or images here to start your investigation"),
     ).toBeInTheDocument();
   });
 
@@ -27,7 +27,7 @@ describe("DocumentUploadZone", () => {
     expect(screen.getByText("Choose Files")).toBeInTheDocument();
   });
 
-  it("rejects non-PDF with error message", () => {
+  it("rejects unsupported file type with error message", () => {
     const onUpload = vi.fn();
     render(
       <DocumentUploadZone
@@ -40,10 +40,12 @@ describe("DocumentUploadZone", () => {
     const input = document.querySelector(
       'input[type="file"]',
     ) as HTMLInputElement;
-    const file = new File(["data"], "image.png", { type: "image/png" });
+    const file = new File(["data"], "notes.txt", { type: "text/plain" });
     fireEvent.change(input, { target: { files: [file] } });
 
-    expect(screen.getByText('"image.png" is not a PDF')).toBeInTheDocument();
+    expect(
+      screen.getByText(/notes\.txt.*not a supported file type/),
+    ).toBeInTheDocument();
     expect(onUpload).not.toHaveBeenCalled();
   });
 
@@ -56,6 +58,68 @@ describe("DocumentUploadZone", () => {
       />,
     );
     expect(screen.getByText("Uploading...")).toBeInTheDocument();
+  });
+
+  it("accepts JPEG file without rejection", () => {
+    const onUpload = vi.fn();
+    render(
+      <DocumentUploadZone
+        onUpload={onUpload}
+        isUploading={false}
+        hasDocuments={false}
+      />,
+    );
+
+    const input = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["jpeg data"], "photo.jpg", { type: "image/jpeg" });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(onUpload).toHaveBeenCalledWith([file]);
+  });
+
+  it("accepts PNG file without rejection", () => {
+    const onUpload = vi.fn();
+    render(
+      <DocumentUploadZone
+        onUpload={onUpload}
+        isUploading={false}
+        hasDocuments={false}
+      />,
+    );
+
+    const input = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["png data"], "screenshot.png", {
+      type: "image/png",
+    });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(onUpload).toHaveBeenCalledWith([file]);
+  });
+
+  it("rejects .txt file with error listing accepted types", () => {
+    const onUpload = vi.fn();
+    render(
+      <DocumentUploadZone
+        onUpload={onUpload}
+        isUploading={false}
+        hasDocuments={false}
+      />,
+    );
+
+    const input = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["text"], "notes.txt", { type: "text/plain" });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(
+      screen.getByText(/Accepted: PDF, JPEG, PNG, TIFF/),
+    ).toBeInTheDocument();
+    expect(onUpload).not.toHaveBeenCalled();
   });
 
   it("rejects oversized PDF with error message", () => {

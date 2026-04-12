@@ -3,6 +3,12 @@ import { Upload, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200 MB
+const ACCEPTED_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/tiff",
+]);
 
 interface UploadingFile {
   name: string;
@@ -32,8 +38,10 @@ export function DocumentUploadZone({
       const rejected: string[] = [];
 
       for (const file of files) {
-        if (file.type !== "application/pdf") {
-          rejected.push(`"${file.name}" is not a PDF`);
+        if (!ACCEPTED_TYPES.has(file.type)) {
+          rejected.push(
+            `"${file.name}" is not a supported file type. Accepted: PDF, JPEG, PNG, TIFF`,
+          );
         } else if (file.size > MAX_FILE_SIZE) {
           const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
           rejected.push(`"${file.name}" exceeds 200 MB limit (${sizeMB} MB)`);
@@ -117,7 +125,7 @@ export function DocumentUploadZone({
         <p className="text-[var(--text-secondary)]">
           {isUploading
             ? "Uploading..."
-            : "Drag PDF files here to start your investigation"}
+            : "Drag PDFs or images here to start your investigation"}
         </p>
         <Button
           onClick={() => fileInputRef.current?.click()}
@@ -128,7 +136,7 @@ export function DocumentUploadZone({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,application/pdf"
+          accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,application/pdf,image/jpeg,image/png,image/tiff"
           multiple
           className="hidden"
           onChange={handleFileInput}

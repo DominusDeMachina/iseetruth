@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Eye, FileText, RotateCcw, Trash2 } from "lucide-react";
+import { AlertTriangle, Eye, FileText, ImageIcon, RotateCcw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteDocumentDialog } from "./DeleteDocumentDialog";
@@ -65,7 +65,11 @@ export function DocumentCard({
   return (
     <>
       <div className="group flex items-center gap-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-3 transition-colors hover:bg-[var(--bg-hover)]">
-        <FileText className="size-5 shrink-0 text-[var(--text-muted)]" />
+        {document.document_type === "image" ? (
+          <ImageIcon className="size-5 shrink-0 text-[var(--text-muted)]" />
+        ) : (
+          <FileText className="size-5 shrink-0 text-[var(--text-muted)]" />
+        )}
 
         <div className="min-w-0 flex-1">
           <p className="truncate font-medium text-[var(--text-primary)]">

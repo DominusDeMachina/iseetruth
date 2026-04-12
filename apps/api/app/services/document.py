@@ -18,6 +18,12 @@ from app.services.investigation import InvestigationNotFoundError, Investigation
 STORAGE_ROOT = Path(os.environ.get("STORAGE_ROOT", "storage"))
 
 
+def _get_ext_from_filename(filename: str) -> str:
+    """Extract file extension (with dot) from filename, defaulting to .pdf."""
+    ext = Path(filename).suffix.lower()
+    return ext if ext else ".pdf"
+
+
 def _get_page_count(file_path: Path) -> int | None:
     try:
         doc = pymupdf.open(str(file_path))
@@ -33,15 +39,20 @@ class DocumentService:
         self.db = db
 
     async def upload_document(
-        self, investigation_id: uuid.UUID, file: UploadFile
+        self,
+        investigation_id: uuid.UUID,
+        file: UploadFile,
+        document_type: str = "pdf",
     ) -> Document:
         # Verify investigation exists
         inv_service = InvestigationService(self.db)
         await inv_service.get_investigation(investigation_id)
 
-        # Generate document ID and storage path
+        # Generate document ID and storage path with dynamic extension
         document_id = uuid.uuid4()
-        file_path = STORAGE_ROOT / str(investigation_id) / f"{document_id}.pdf"
+        filename = file.filename or "untitled.pdf"
+        ext = _get_ext_from_filename(filename)
+        file_path = STORAGE_ROOT / str(investigation_id) / f"{document_id}{ext}"
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Stream file to disk and compute SHA-256 in a single pass
@@ -57,15 +68,21 @@ class DocumentService:
                 size_bytes += len(chunk)
 
         checksum = sha256.hexdigest()
-        page_count = await asyncio.to_thread(_get_page_count, file_path)
+
+        # Only extract page count for PDFs; images are single-page
+        if document_type == "pdf":
+            page_count = await asyncio.to_thread(_get_page_count, file_path)
+        else:
+            page_count = 1
 
         # Create database record
         document = Document(
             id=document_id,
             investigation_id=investigation_id,
-            filename=file.filename or "untitled.pdf",
+            filename=filename,
             size_bytes=size_bytes,
             sha256_checksum=checksum,
+            document_type=document_type,
             status="queued",
             page_count=page_count,
         )
@@ -199,7 +216,8 @@ class DocumentService:
 
         # Remove file from storage
         try:
-            file_path = STORAGE_ROOT / str(investigation_id) / f"{document_id}.pdf"
+            ext = _get_ext_from_filename(document.filename)
+            file_path = STORAGE_ROOT / str(investigation_id) / f"{document_id}{ext}"
             if file_path.exists():
                 file_path.unlink()
                 logger.info(

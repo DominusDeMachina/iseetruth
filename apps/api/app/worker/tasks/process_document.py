@@ -13,6 +13,7 @@ from app.services.chunking import ChunkingService
 from app.services.embedding import EmbeddingService
 from app.services.events import EventPublisher
 from app.services.extraction import EntityExtractionService
+from app.services.image_extraction import ImageExtractionService
 from app.services.text_extraction import TextExtractionService
 from app.worker.celery_app import celery_app
 
@@ -116,12 +117,44 @@ def process_document_task(
                 )
 
                 try:
-                    file_path = STORAGE_ROOT / investigation_id / f"{document_id}.pdf"
-                    extractor = TextExtractionService()
-                    extracted_text = extractor.extract_text(file_path)
+                    # Build file path using actual extension from stored filename
+                    ext = Path(document.filename).suffix.lower() or ".pdf"
+                    file_path = STORAGE_ROOT / investigation_id / f"{document_id}{ext}"
+
+                    # Route extraction by document type
+                    if document.document_type == "image":
+                        extractor = ImageExtractionService()
+                        extracted_text = extractor.extract_text(file_path, document_id=document_id)
+                    else:
+                        extractor = TextExtractionService()
+                        extracted_text = extractor.extract_text(file_path)
 
                     document.extracted_text = extracted_text
                     session.commit()
+
+                    # Early exit for empty OCR: mark complete, skip remaining stages
+                    if document.document_type == "image" and not extracted_text:
+                        document.status = "complete"
+                        document.entity_count = 0
+                        session.commit()
+
+                        logger.info(
+                            "Image OCR returned no text — marking complete",
+                            document_id=document_id,
+                            investigation_id=investigation_id,
+                        )
+
+                        _publish_safe(
+                            "document.complete",
+                            {
+                                "document_id": document_id,
+                                "entity_count": 0,
+                                "relationship_count": 0,
+                                "embedded_count": 0,
+                                "extraction_confidence": None,
+                            },
+                        )
+                        return
 
                     logger.info(
                         "Text extraction complete",
@@ -287,6 +320,23 @@ def process_document_task(
                         relationship_count=summary.relationship_count,
                         average_confidence=summary.average_confidence,
                     )
+
+                    # Trigger cross-investigation matching (fire-and-forget)
+                    if summary.entity_count > 0:
+                        try:
+                            from app.worker.tasks.cross_investigation_match import (
+                                run_cross_investigation_match_task,
+                            )
+                            run_cross_investigation_match_task.apply_async(
+                                args=[investigation_id, document_id],
+                                ignore_result=True,
+                            )
+                        except Exception as cross_exc:
+                            logger.warning(
+                                "Failed to dispatch cross-investigation matching",
+                                document_id=document_id,
+                                error=str(cross_exc),
+                            )
 
                 except Exception as exc:
                     session.rollback()

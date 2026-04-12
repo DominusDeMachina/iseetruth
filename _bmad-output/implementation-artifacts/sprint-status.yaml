@@ -1,4 +1,4 @@
-# generated: 2026-03-08
+# generated: 2026-04-12
 # project: OSINT
 # project_key: NOKEY
 # tracking_system: file-system
@@ -33,13 +33,17 @@
 # - SM typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
-generated: 2026-03-08
+generated: 2026-04-12
 project: OSINT
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 
 development_status:
+  # ============================================
+  # PHASE 1 — MVP (Epics 1–6) — ALL COMPLETE
+  # ============================================
+
   # Epic 1: Project Foundation & Infrastructure Setup
   epic-1: done
   1-1-monorepo-scaffolding-docker-compose-infrastructure: done
@@ -82,9 +86,40 @@ development_status:
   epic-5-retrospective: optional
 
   # Epic 6: System Resilience & Error Recovery
-  epic-6: in-progress
+  epic-6: done
   6-1-failed-document-detection-manual-retry: done
   6-2-auto-retry-on-service-recovery: done
   6-3-per-service-graceful-degradation: done
   6-4-service-status-display-error-boundaries: done
   epic-6-retrospective: optional
+
+  # ============================================
+  # PHASE 2 — v1.1 Input Expansion & Polish (Epics 7–10)
+  # ============================================
+
+  # Epic 7: Image Document Processing (OCR)
+  epic-7: in-progress
+  7-1-image-upload-tesseract-ocr-text-extraction: done
+  7-2-moondream2-enhanced-image-understanding: backlog
+  7-3-ocr-quality-confidence-indicators: backlog
+  epic-7-retrospective: optional
+
+  # Epic 8: Manual Entity Curation & Disambiguation
+  epic-8: in-progress
+  8-1-manual-entity-creation-editing: in-progress
+  8-2-manual-relationship-creation: backlog
+  8-3-entity-merge-with-relationship-preservation: backlog
+  8-4-automated-duplicate-entity-detection-merge-suggestions: backlog
+  epic-8-retrospective: optional
+
+  # Epic 9: Web Page Ingestion
+  epic-9: backlog
+  9-1-web-page-capture-storage: backlog
+  9-2-web-document-processing-entity-extraction: backlog
+  epic-9-retrospective: optional
+
+  # Epic 10: Cross-Investigation Intelligence
+  epic-10: in-progress
+  10-1-cross-investigation-entity-matching-engine: in-progress
+  10-2-cross-investigation-entity-exploration-querying: backlog
+  epic-10-retrospective: optional
