@@ -6,7 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.neo4j import driver as neo4j_driver
 from app.db.postgres import get_db
 from app.exceptions import EntityNotFoundError
-from app.schemas.entity import EntityDetailResponse, EntityListResponse
+from app.schemas.entity import (
+    EntityCreateRequest,
+    EntityDetailResponse,
+    EntityListResponse,
+    EntityUpdateRequest,
+)
 from app.services.entity_query import EntityQueryService
 
 router = APIRouter(prefix="/investigations", tags=["entities"])
@@ -50,6 +55,49 @@ async def get_entity_detail(
     """Return entity detail with relationships and provenance sources."""
     service = EntityQueryService(neo4j_driver, db)
     result = await service.get_entity_detail(investigation_id, entity_id)
+    if result is None:
+        raise EntityNotFoundError(entity_id)
+    return result
+
+
+@router.post(
+    "/{investigation_id}/entities/",
+    response_model=EntityDetailResponse,
+    status_code=201,
+)
+async def create_entity(
+    investigation_id: uuid.UUID,
+    body: EntityCreateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a manual entity in the investigation's knowledge graph."""
+    service = EntityQueryService(neo4j_driver, db)
+    return await service.create_entity(
+        investigation_id,
+        name=body.name,
+        entity_type=body.type,
+        source_annotation=body.source_annotation,
+    )
+
+
+@router.patch(
+    "/{investigation_id}/entities/{entity_id}",
+    response_model=EntityDetailResponse,
+)
+async def update_entity(
+    investigation_id: uuid.UUID,
+    entity_id: str,
+    body: EntityUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update an entity's name and/or source annotation."""
+    service = EntityQueryService(neo4j_driver, db)
+    result = await service.update_entity(
+        investigation_id,
+        entity_id,
+        name=body.name,
+        source_annotation=body.source_annotation,
+    )
     if result is None:
         raise EntityNotFoundError(entity_id)
     return result

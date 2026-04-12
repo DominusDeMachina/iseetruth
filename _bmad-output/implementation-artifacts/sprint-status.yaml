@@ -106,20 +106,20 @@ development_status:
 
   # Epic 8: Manual Entity Curation & Disambiguation
   epic-8: in-progress
-  8-1-manual-entity-creation-editing: in-progress
+  8-1-manual-entity-creation-editing: done
   8-2-manual-relationship-creation: backlog
   8-3-entity-merge-with-relationship-preservation: backlog
   8-4-automated-duplicate-entity-detection-merge-suggestions: backlog
   epic-8-retrospective: optional
 
   # Epic 9: Web Page Ingestion
-  epic-9: backlog
-  9-1-web-page-capture-storage: backlog
+  epic-9: in-progress
+  9-1-web-page-capture-storage: review
   9-2-web-document-processing-entity-extraction: backlog
   epic-9-retrospective: optional
 
   # Epic 10: Cross-Investigation Intelligence
   epic-10: in-progress
-  10-1-cross-investigation-entity-matching-engine: in-progress
+  10-1-cross-investigation-entity-matching-engine: done
   10-2-cross-investigation-entity-exploration-querying: backlog
   epic-10-retrospective: optional

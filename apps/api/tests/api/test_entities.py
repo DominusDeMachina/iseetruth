@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from app.exceptions import EntityDuplicateError
 from app.schemas.entity import (
     EntityDetailResponse,
     EntityListItem,
@@ -289,3 +290,188 @@ class TestListEntitiesSearch:
         assert summary["organizations"] == 0
         assert summary["locations"] == 0
         assert summary["total"] == 1
+
+
+def _manual_entity_response(**overrides) -> EntityDetailResponse:
+    """Helper for a manual entity response."""
+    defaults = dict(
+        id=str(uuid.uuid4()),
+        name="Viktor Novak",
+        type="person",
+        confidence_score=1.0,
+        investigation_id=INVESTIGATION_ID,
+        relationships=[],
+        sources=[],
+        evidence_strength="none",
+        source="manual",
+        source_annotation="Found in public records",
+        aliases=[],
+    )
+    defaults.update(overrides)
+    return EntityDetailResponse(**defaults)
+
+
+class TestCreateEntity:
+    """Tests for POST /investigations/{id}/entities/."""
+
+    def test_create_entity_returns_201(self, entity_client):
+        expected = _manual_entity_response()
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.create_entity = AsyncMock(return_value=expected)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.post(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/",
+                json={"name": "Viktor Novak", "type": "person", "source_annotation": "Found in public records"},
+            )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["name"] == "Viktor Novak"
+        assert data["type"] == "person"
+        assert data["confidence_score"] == 1.0
+        assert data["source"] == "manual"
+        assert data["source_annotation"] == "Found in public records"
+        assert data["aliases"] == []
+
+    def test_create_entity_missing_name_returns_422(self, entity_client):
+        response = entity_client.post(
+            f"/api/v1/investigations/{INVESTIGATION_ID}/entities/",
+            json={"type": "person"},
+        )
+        assert response.status_code == 422
+
+    def test_create_entity_invalid_type_returns_422(self, entity_client):
+        response = entity_client.post(
+            f"/api/v1/investigations/{INVESTIGATION_ID}/entities/",
+            json={"name": "Test", "type": "vehicle"},
+        )
+        assert response.status_code == 422
+
+    def test_create_entity_duplicate_returns_409(self, entity_client):
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.create_entity = AsyncMock(
+                side_effect=EntityDuplicateError("Viktor Novak", "person")
+            )
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.post(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/",
+                json={"name": "Viktor Novak", "type": "person"},
+            )
+
+        assert response.status_code == 409
+        data = response.json()
+        assert "entity_duplicate" in data["type"]
+        assert "Viktor Novak" in data["detail"]
+
+    def test_create_entity_empty_name_returns_422(self, entity_client):
+        response = entity_client.post(
+            f"/api/v1/investigations/{INVESTIGATION_ID}/entities/",
+            json={"name": "   ", "type": "person"},
+        )
+        assert response.status_code == 422
+
+
+class TestUpdateEntity:
+    """Tests for PATCH /investigations/{id}/entities/{entity_id}."""
+
+    def test_update_name_returns_200_with_alias(self, entity_client):
+        updated = _manual_entity_response(
+            name="Viktor J. Novak",
+            aliases=["Viktor Novak"],
+        )
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.update_entity = AsyncMock(return_value=updated)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.patch(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/{ENTITY_ID}",
+                json={"name": "Viktor J. Novak"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "Viktor J. Novak"
+        assert "Viktor Novak" in data["aliases"]
+
+    def test_update_nonexistent_entity_returns_404(self, entity_client):
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.update_entity = AsyncMock(return_value=None)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.patch(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/nonexistent-id",
+                json={"name": "New Name"},
+            )
+
+        assert response.status_code == 404
+
+    def test_update_only_source_annotation(self, entity_client):
+        updated = _manual_entity_response(
+            source_annotation="Updated source info",
+        )
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.update_entity = AsyncMock(return_value=updated)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.patch(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/{ENTITY_ID}",
+                json={"source_annotation": "Updated source info"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["source_annotation"] == "Updated source info"
+        assert data["aliases"] == []  # Name didn't change, no alias added
+
+
+class TestEntityResponseFields:
+    """Tests for new source/aliases/source_annotation fields in responses."""
+
+    def test_list_entities_includes_source_field(self, entity_client):
+        manual_item = EntityListItem(
+            id="e5", name="Manual Entity", type="person",
+            confidence_score=1.0, source_count=0,
+            evidence_strength="none", source="manual",
+        )
+        resp = _list_response([_JOHN, manual_item])
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.list_entities = AsyncMock(return_value=resp)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.get(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/"
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        sources = [item["source"] for item in data["items"]]
+        assert "extracted" in sources
+        assert "manual" in sources
+
+    def test_entity_detail_includes_source_aliases_annotation(self, entity_client):
+        detail = _manual_entity_response(
+            aliases=["Old Name"],
+            source_annotation="Found in records",
+        )
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.get_entity_detail = AsyncMock(return_value=detail)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.get(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/{ENTITY_ID}"
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["source"] == "manual"
+        assert data["source_annotation"] == "Found in records"
+        assert data["aliases"] == ["Old Name"]

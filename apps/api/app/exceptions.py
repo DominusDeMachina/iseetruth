@@ -97,6 +97,33 @@ class EntityNotFoundError(DomainError):
         )
 
 
+class EntityDuplicateError(DomainError):
+    def __init__(self, name: str, entity_type: str):
+        super().__init__(
+            detail=f"Entity with name '{name}' and type '{entity_type}' already exists in this investigation",
+            status_code=409,
+            error_type="entity_duplicate",
+        )
+
+
+class WebCaptureError(DomainError):
+    def __init__(self, url: str, detail: str):
+        super().__init__(
+            detail=f"Could not reach URL: {detail}",
+            status_code=422,
+            error_type="web_capture_failed",
+        )
+
+
+class InvalidUrlError(DomainError):
+    def __init__(self, detail: str):
+        super().__init__(
+            detail=detail,
+            status_code=422,
+            error_type="invalid_url",
+        )
+
+
 class ChunkNotFoundError(DomainError):
     def __init__(self, chunk_id: str):
         super().__init__(

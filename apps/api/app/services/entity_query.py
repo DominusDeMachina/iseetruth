@@ -1,9 +1,11 @@
 import uuid
 
 from loguru import logger
+from neo4j.exceptions import ConstraintError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.exceptions import EntityDuplicateError
 from app.models.document import Document
 from app.schemas.entity import (
     EntityDetailResponse,
@@ -73,6 +75,7 @@ class EntityQueryService:
                     if (r.get("source_count") or 0) == 1
                     else "none"
                 ),
+                source=r.get("source") or "extracted",
             )
             for r in paginated
         ]
@@ -82,6 +85,101 @@ class EntityQueryService:
             total=summary.total,
             summary=summary,
         )
+
+    async def create_entity(
+        self,
+        investigation_id: uuid.UUID,
+        name: str,
+        entity_type: str,
+        source_annotation: str | None = None,
+    ) -> EntityDetailResponse:
+        """Create a manual entity in Neo4j and return its detail."""
+        inv_id_str = str(investigation_id)
+        entity_id = str(uuid.uuid4())
+        label = entity_type.capitalize()
+
+        async with self.neo4j_driver.session() as session:
+            try:
+                record = await session.execute_write(
+                    _create_entity,
+                    entity_id,
+                    name,
+                    entity_type,
+                    inv_id_str,
+                    source_annotation,
+                    label,
+                )
+            except ConstraintError:
+                raise EntityDuplicateError(name, entity_type)
+
+        logger.info(
+            "Manual entity created",
+            entity_id=entity_id,
+            name=name,
+            type=entity_type,
+            investigation_id=inv_id_str,
+        )
+
+        return EntityDetailResponse(
+            id=entity_id,
+            name=name,
+            type=entity_type,
+            confidence_score=1.0,
+            investigation_id=inv_id_str,
+            relationships=[],
+            sources=[],
+            evidence_strength="none",
+            source="manual",
+            source_annotation=source_annotation,
+            aliases=[],
+        )
+
+    async def update_entity(
+        self,
+        investigation_id: uuid.UUID,
+        entity_id: str,
+        name: str | None = None,
+        source_annotation: str | None = None,
+    ) -> EntityDetailResponse | None:
+        """Update an existing entity's name and/or source_annotation.
+
+        Returns None if entity not found. Appends old name to aliases when
+        the name changes.
+        """
+        inv_id_str = str(investigation_id)
+
+        # Fetch existing entity first to get current values
+        async with self.neo4j_driver.session() as session:
+            existing = await session.execute_read(
+                _fetch_entity, entity_id, inv_id_str
+            )
+            if existing is None:
+                return None
+
+            old_name = existing["name"]
+            name_changed = name is not None and name != old_name
+
+            try:
+                await session.execute_write(
+                    _update_entity,
+                    entity_id,
+                    inv_id_str,
+                    name if name is not None else old_name,
+                    old_name if name_changed else None,
+                    source_annotation,
+                )
+            except ConstraintError:
+                raise EntityDuplicateError(name or old_name, existing["type"].lower())
+
+        logger.info(
+            "Entity updated",
+            entity_id=entity_id,
+            name_changed=name_changed,
+            investigation_id=inv_id_str,
+        )
+
+        # Return fresh detail
+        return await self.get_entity_detail(investigation_id, entity_id)
 
     async def get_entity_detail(
         self, investigation_id: uuid.UUID, entity_id: str
@@ -165,6 +263,9 @@ class EntityQueryService:
             relationships=relationships,
             sources=sources,
             evidence_strength=evidence_strength,
+            source=entity_record.get("source") or "extracted",
+            source_annotation=entity_record.get("source_annotation"),
+            aliases=entity_record.get("aliases") or [],
         )
 
 
@@ -192,7 +293,8 @@ async def _fetch_entity_list(
         "OPTIONAL MATCH (e)-[m:MENTIONED_IN]->(d:Document) "
         "WITH e, labels(e)[0] AS type, e.confidence_score AS confidence_score, "
         "COUNT(DISTINCT d) AS source_count "
-        "RETURN e.id AS id, e.name AS name, type, confidence_score, source_count"
+        "RETURN e.id AS id, e.name AS name, type, confidence_score, source_count, "
+        "e.source AS source"
     )
     params = {"investigation_id": investigation_id}
     if search:
@@ -206,7 +308,9 @@ async def _fetch_entity(tx, entity_id: str, investigation_id: str):
     result = await tx.run(
         "MATCH (e:Person|Organization|Location {id: $entity_id, investigation_id: $investigation_id}) "
         "RETURN e.id AS id, e.name AS name, labels(e)[0] AS type, "
-        "e.confidence_score AS confidence_score",
+        "e.confidence_score AS confidence_score, "
+        "e.source AS source, e.source_annotation AS source_annotation, "
+        "e.aliases AS aliases",
         entity_id=entity_id,
         investigation_id=investigation_id,
     )
@@ -238,3 +342,71 @@ async def _fetch_sources(tx, entity_id: str, investigation_id: str):
         inv_id=investigation_id,
     )
     return await result.data()
+
+
+# ---------------------------------------------------------------------------
+# Neo4j write transaction helpers
+# ---------------------------------------------------------------------------
+
+
+async def _create_entity(
+    tx,
+    entity_id: str,
+    name: str,
+    entity_type: str,
+    investigation_id: str,
+    source_annotation: str | None,
+    label: str,
+):
+    """Create a manual entity node in Neo4j."""
+    await tx.run(
+        f"CREATE (e:{label} {{"
+        "  id: $id, name: $name, type: $type,"
+        "  investigation_id: $investigation_id,"
+        "  confidence_score: 1.0, source: 'manual',"
+        "  source_annotation: $source_annotation,"
+        "  aliases: [], created_at: datetime()"
+        "})",
+        id=entity_id,
+        name=name,
+        type=entity_type,
+        investigation_id=investigation_id,
+        source_annotation=source_annotation,
+    )
+
+
+async def _update_entity(
+    tx,
+    entity_id: str,
+    investigation_id: str,
+    new_name: str,
+    old_name_to_alias: str | None,
+    source_annotation: str | None,
+):
+    """Update entity name and/or source_annotation, preserving aliases."""
+    set_clauses = ["e.name = $new_name"]
+
+    if old_name_to_alias is not None:
+        set_clauses.append(
+            "e.aliases = CASE WHEN $old_name IN COALESCE(e.aliases, []) "
+            "THEN COALESCE(e.aliases, []) "
+            "ELSE COALESCE(e.aliases, []) + [$old_name] END"
+        )
+
+    if source_annotation is not None:
+        set_clauses.append("e.source_annotation = $source_annotation")
+
+    query = (
+        "MATCH (e:Person|Organization|Location "
+        "{id: $entity_id, investigation_id: $investigation_id}) "
+        f"SET {', '.join(set_clauses)}"
+    )
+
+    await tx.run(
+        query,
+        entity_id=entity_id,
+        investigation_id=investigation_id,
+        new_name=new_name,
+        old_name=old_name_to_alias,
+        source_annotation=source_annotation,
+    )

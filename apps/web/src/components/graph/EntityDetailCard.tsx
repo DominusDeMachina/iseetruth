@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { X, FileText, MessageSquare, ChevronDown, ChevronUp } from "lucide-react";
+import { X, FileText, MessageSquare, ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { useEntityDetail } from "@/hooks/useEntityDetail";
 import { ENTITY_COLORS } from "@/lib/entity-constants";
+import { EditEntityDialog } from "./EditEntityDialog";
 
 function confidenceLabel(score: number): string {
   if (score >= 0.8) return "High confidence";
@@ -33,16 +34,17 @@ export function EntityDetailCard({
     entityId,
   );
   const [expanded, setExpanded] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // Close on Escape
+  // Close on Escape (suppressed when edit dialog is open)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !editDialogOpen) onClose();
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [onClose, editDialogOpen]);
 
   // Compute clamped position to keep card within parent container
   const [clampedPos, setClampedPos] = useState(position);
@@ -181,13 +183,22 @@ export function EntityDetailCard({
             </span>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          className="shrink-0 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors mt-0.5"
-        >
-          <X className="size-4" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0 mt-0.5">
+          <button
+            onClick={() => setEditDialogOpen(true)}
+            aria-label="Edit entity"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            <Pencil className="size-3.5" />
+          </button>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
       </div>
 
       {/* Relationships */}
@@ -273,6 +284,18 @@ export function EntityDetailCard({
           Ask about this entity
         </button>
       </div>
+
+      {/* Edit dialog */}
+      <EditEntityDialog
+        investigationId={investigationId}
+        entityId={entityId}
+        entityName={data.name}
+        entityType={data.type}
+        sourceAnnotation={data.source_annotation}
+        aliases={data.aliases}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+      />
     </div>
   );
 }

@@ -233,4 +233,21 @@ describe("EntityDetailCard", () => {
       "Deputy Mayor Horvat",
     );
   });
+
+  it("shows edit button that opens edit dialog", () => {
+    mockUseEntityDetail.mockReturnValue({
+      data: mockEntityData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(createElement(EntityDetailCard, defaultProps), {
+      wrapper: createWrapper(),
+    });
+
+    const editBtn = screen.getByLabelText("Edit entity");
+    expect(editBtn).toBeTruthy();
+  });
 });
