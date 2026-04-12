@@ -103,6 +103,20 @@ export function useQueryStream(investigationId: string): UseQueryStreamReturn {
                 accumulatedText += (data.chunk as string) ?? "";
                 setCurrentStreamingText(accumulatedText);
                 break;
+              case "query.degraded": {
+                // Qdrant is down — results are graph-only
+                const degradedMsg =
+                  (data.message as string) ??
+                  "Results based on graph data only — vector search unavailable";
+                setConversationEntries((prev) =>
+                  prev.map((e) =>
+                    e.id === entryId
+                      ? { ...e, degradedMessage: degradedMsg }
+                      : e,
+                  ),
+                );
+                break;
+              }
               case "query.complete": {
                 setQueryStatus("complete");
                 const answer = data.answer as string;
@@ -112,6 +126,7 @@ export function useQueryStream(investigationId: string): UseQueryStreamReturn {
                 const suggestedFollowups = (data.suggested_followups ??
                   []) as string[];
                 const noResults = (data.no_results ?? false) as boolean;
+                const degraded = (data.degraded ?? false) as boolean;
 
                 setConversationEntries((prev) =>
                   prev.map((e) =>
@@ -123,6 +138,7 @@ export function useQueryStream(investigationId: string): UseQueryStreamReturn {
                           entitiesMentioned,
                           suggestedFollowups,
                           noResults,
+                          degraded,
                           status: "complete" as const,
                         }
                       : e,

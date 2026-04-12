@@ -17,6 +17,7 @@ class DocumentResponse(BaseModel):
     extracted_text: str | None = None
     error_message: str | None = None
     failed_stage: str | None = None
+    retry_count: int = 0
 
     @computed_field
     @property

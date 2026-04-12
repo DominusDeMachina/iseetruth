@@ -276,8 +276,9 @@ class TestOllamaUnavailableHandling:
             str(sample_doc_record.investigation_id),
         )
 
-        assert sample_doc_record.status == "failed"
-        assert "Ollama" in sample_doc_record.error_message
+        # Story 6.3: document stays queued when Ollama is unavailable (not failed)
+        assert sample_doc_record.status == "queued"
+        assert "Waiting for LLM service" in sample_doc_record.error_message
 
         # Text extraction should NOT have been called
         mock_extraction_cls.return_value.extract_text.assert_not_called()
@@ -722,7 +723,8 @@ class TestFailedStageRecording:
             str(sample_doc_record.investigation_id),
         )
 
-        assert sample_doc_record.status == "failed"
+        # Story 6.3: document stays queued when Ollama unavailable at preflight
+        assert sample_doc_record.status == "queued"
         assert sample_doc_record.failed_stage == "preflight"
 
         # SSE event includes stage

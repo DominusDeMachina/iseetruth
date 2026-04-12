@@ -348,6 +348,11 @@ export interface components {
             /** Failed Stage */
             failed_stage?: string | null;
             /**
+             * Retry Count
+             * @default 0
+             */
+            retry_count?: number;
+            /**
              * Created At
              * Format: date-time
              */

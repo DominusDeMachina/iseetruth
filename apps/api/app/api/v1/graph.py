@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.api.v1.entities import ALLOWED_ENTITY_TYPES
 from app.db.neo4j import driver as neo4j_driver
-from app.exceptions import EntityNotFoundError
+from app.exceptions import EntityNotFoundError, GraphUnavailableError
 from app.schemas.graph import GraphResponse
 from app.services.graph_query import GraphQueryService
 

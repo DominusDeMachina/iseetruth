@@ -1,5 +1,10 @@
 import uuid
+from contextlib import asynccontextmanager
 
+from loguru import logger
+from neo4j.exceptions import ServiceUnavailable, SessionExpired
+
+from app.exceptions import GraphUnavailableError
 from app.schemas.graph import (
     GraphEdge,
     GraphEdgeData,
@@ -13,6 +18,16 @@ class GraphQueryService:
     def __init__(self, neo4j_driver):
         self.neo4j_driver = neo4j_driver
 
+    @asynccontextmanager
+    async def _safe_session(self):
+        """Wrap Neo4j session creation with graceful error handling."""
+        try:
+            async with self.neo4j_driver.session() as session:
+                yield session
+        except (ServiceUnavailable, SessionExpired, ConnectionRefusedError, OSError) as exc:
+            logger.error("Neo4j unavailable", error=str(exc))
+            raise GraphUnavailableError("Graph database unavailable")
+
     async def get_subgraph(
         self,
         investigation_id: uuid.UUID,
@@ -24,7 +39,7 @@ class GraphQueryService:
         """Return hub nodes ordered by relationship_count DESC and edges between them."""
         inv_id_str = str(investigation_id)
 
-        async with self.neo4j_driver.session() as session:
+        async with self._safe_session() as session:
             hub_records = await session.execute_read(
                 _fetch_hub_nodes, inv_id_str, limit, offset, entity_types, document_id
             )
@@ -95,7 +110,7 @@ class GraphQueryService:
         """
         inv_id_str = str(investigation_id)
 
-        async with self.neo4j_driver.session() as session:
+        async with self._safe_session() as session:
             # Verify entity exists
             entity_record = await session.execute_read(
                 _fetch_entity_exists, entity_id, inv_id_str

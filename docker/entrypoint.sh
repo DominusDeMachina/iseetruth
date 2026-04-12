@@ -2,7 +2,7 @@
 set -e
 
 # Start Celery worker in background
-uv run celery -A app.worker.celery_app worker --loglevel=info &
+uv run celery -A app.worker.celery_app worker -B --loglevel=info &
 
 # Start FastAPI with Uvicorn
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 &

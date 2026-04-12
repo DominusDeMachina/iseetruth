@@ -46,6 +46,7 @@ def _make_failed_document(doc_id, inv_id, failed_stage="extracting_entities"):
     doc.status = "failed"
     doc.failed_stage = failed_stage
     doc.error_message = "Entity extraction failed: Neo4j down"
+    doc.retry_count = 0
     doc.page_count = 3
     doc.extracted_text = "Some extracted text"
     doc.entity_count = None
@@ -288,3 +289,34 @@ async def test_retry_from_unknown_stage_runs_all_stages(
     mock_task.delay.assert_called_once_with(
         str(sample_doc_id), str(sample_inv_id), None
     )
+
+
+# ---------------------------------------------------------------------------
+# retry_failed_document — retry_count reset on manual retry
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_manual_retry_resets_retry_count_to_zero(
+    service, mock_db, sample_inv_id, sample_doc_id
+):
+    """Manual retry should reset retry_count to 0 for a fresh auto-retry budget."""
+    doc = _make_failed_document(sample_doc_id, sample_inv_id, "preflight")
+    doc.retry_count = 3  # Previously auto-retried 3 times
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = doc
+    mock_db.execute = AsyncMock(return_value=result_mock)
+
+    mock_task = MagicMock()
+    with patch.dict(
+        "sys.modules",
+        {
+            "app.worker.tasks.process_document": MagicMock(
+                process_document_task=mock_task
+            )
+        },
+    ):
+        await service.retry_failed_document(sample_inv_id, sample_doc_id)
+
+    assert doc.retry_count == 0

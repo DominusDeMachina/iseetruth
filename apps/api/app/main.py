@@ -15,6 +15,7 @@ from app.db.redis import client as redis_client
 from app.db.sync_neo4j import sync_neo4j_driver
 from app.exceptions import DomainError, domain_error_handler, generic_error_handler
 from app.services.extraction import ensure_neo4j_constraints
+from app.services.health_monitor import HealthMonitorService
 
 # ---------------------------------------------------------------------------
 # Loguru configuration (Task 2)
@@ -58,8 +59,19 @@ async def lifespan(app: FastAPI):
     await asyncio.to_thread(ensure_qdrant_collection, get_qdrant_client())
     logger.info("Qdrant collection setup complete")
 
+    logger.info("Starting health monitor")
+    health_monitor = HealthMonitorService()
+    health_monitor_task = asyncio.create_task(health_monitor.run())
+
     logger.info("Application startup complete")
     yield
+
+    # Cancel health monitor
+    health_monitor_task.cancel()
+    try:
+        await health_monitor_task
+    except asyncio.CancelledError:
+        pass
     # --- Shutdown ---
     logger.info("Closing Neo4j driver")
     await neo4j_driver.close()

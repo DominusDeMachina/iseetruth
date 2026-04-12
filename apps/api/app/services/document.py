@@ -159,10 +159,11 @@ class DocumentService:
             # preflight, extracting_text, or None (unknown) → run all stages
             resume_from_stage = None
 
-        # Reset document state
+        # Reset document state (retry_count reset gives auto-retry a fresh budget)
         document.status = "queued"
         document.error_message = None
         document.failed_stage = None
+        document.retry_count = 0
         await self.db.commit()
         await self.db.refresh(document)
 

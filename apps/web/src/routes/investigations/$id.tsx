@@ -64,8 +64,10 @@ function InvestigationDetail() {
 
   const { data: entitiesData } = useEntities(id, undefined, hasProcessing);
   // Connect SSE when upload starts (not after it completes) so the connection
-  // is established before Celery workers publish processing events
-  const sseEnabled = hasProcessing || uploadMutation.isPending;
+  // is established before Celery workers publish processing events.
+  // Also keep connected when failed docs exist so auto-retry events are received.
+  const hasFailed = documents.some((d) => d.status === "failed");
+  const sseEnabled = hasProcessing || uploadMutation.isPending || hasFailed;
   const { isConnected, connectionError, discoveredEntities } = useSSE(id, sseEnabled);
 
   const handleConversationUpdate = useCallback(

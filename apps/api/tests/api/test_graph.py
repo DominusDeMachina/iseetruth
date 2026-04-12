@@ -398,3 +398,47 @@ class TestBuildLabelExpr:
 
         assert _build_label_expr(["Person"]) == "Person"
         assert _build_label_expr(["ORGANIZATION"]) == "Organization"
+
+
+class TestGraphUnavailable:
+    """Story 6.3: Graph API returns 503 RFC 7807 when Neo4j is down."""
+
+    def test_subgraph_neo4j_unavailable(self, client: TestClient):
+        """GET /graph/ returns 503 with RFC 7807 body when Neo4j is down."""
+        from app.exceptions import GraphUnavailableError
+
+        with patch(
+            "app.api.v1.graph.GraphQueryService"
+        ) as mock_svc_cls:
+            mock_svc = mock_svc_cls.return_value
+            mock_svc.get_subgraph = AsyncMock(
+                side_effect=GraphUnavailableError("Graph database unavailable")
+            )
+
+            resp = client.get(f"/api/v1/investigations/{INVESTIGATION_ID}/graph/")
+
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["type"] == "urn:osint:error:graph_unavailable"
+        assert body["status"] == 503
+        assert "Graph database unavailable" in body["detail"]
+
+    def test_neighbors_neo4j_unavailable(self, client: TestClient):
+        """GET /graph/neighbors/ returns 503 when Neo4j is down."""
+        from app.exceptions import GraphUnavailableError
+
+        with patch(
+            "app.api.v1.graph.GraphQueryService"
+        ) as mock_svc_cls:
+            mock_svc = mock_svc_cls.return_value
+            mock_svc.get_neighbors = AsyncMock(
+                side_effect=GraphUnavailableError("Graph database unavailable")
+            )
+
+            resp = client.get(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/graph/neighbors/{ENTITY_ID}"
+            )
+
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["type"] == "urn:osint:error:graph_unavailable"

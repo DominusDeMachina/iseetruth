@@ -5,6 +5,7 @@ import type { DocumentListResponse, DocumentWithProgress } from "@/hooks/useDocu
 
 interface SSEEvent {
   type:
+    | "document.queued"
     | "document.processing"
     | "document.complete"
     | "document.failed"
@@ -89,6 +90,13 @@ export function useSSE(
             items: old.items.map((doc) => {
               if (doc.id !== event.payload.document_id) return doc;
               switch (event.type) {
+                case "document.queued":
+                  return {
+                    ...doc,
+                    status: "queued",
+                    error_message: null,
+                    failed_stage: null,
+                  };
                 case "document.processing": {
                   const updated: DocumentWithProgress = {
                     ...doc,

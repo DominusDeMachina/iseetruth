@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback, useState, useMemo } from "react";
-import { RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search, AlertTriangle } from "lucide-react";
 import { useCytoscape } from "@/hooks/useCytoscape";
+import { useHealthStatus } from "@/hooks/useHealthStatus";
 import {
   useGraphData,
   useExpandNeighbors,
@@ -48,6 +49,13 @@ export function GraphCanvas({
 }: GraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { cy, isReady, error: cyError, reducedMotion } = useCytoscape(containerRef);
+  const { data: healthData } = useHealthStatus();
+
+  // Per-service health status for degradation UX
+  const neo4jUnavailable =
+    healthData?.services?.neo4j?.status === "unavailable";
+  const ollamaUnavailable =
+    healthData?.services?.ollama?.status !== "healthy";
 
   // Filter state
   const [entityTypes, setEntityTypes] = useState<string[]>([]);
@@ -504,7 +512,20 @@ export function GraphCanvas({
   let overlay: React.ReactNode = null;
   // Whether to show filters even when overlay is active (empty filtered results)
   let showFiltersWithOverlay = false;
-  if (cyError) {
+  if (neo4jUnavailable) {
+    overlay = (
+      <div className="flex flex-col items-center gap-3">
+        <AlertTriangle className="size-8 text-[var(--status-warning)]" />
+        <p className="text-sm text-[var(--status-warning)]">
+          Graph database unavailable
+        </p>
+        <p className="max-w-xs text-center text-xs text-[var(--text-muted)]">
+          Document management and uploads still work. The graph will reload
+          automatically when the database recovers.
+        </p>
+      </div>
+    );
+  } else if (cyError) {
     overlay = (
       <p className="text-[var(--text-secondary)]">
         Failed to initialize graph engine.
@@ -593,6 +614,14 @@ export function GraphCanvas({
         >
           <Search className="size-4 text-[var(--text-primary)]" />
         </button>
+      )}
+
+      {/* Ollama degradation badge — graph works, but Q&A is unavailable */}
+      {!overlay && ollamaUnavailable && !neo4jUnavailable && (
+        <div className="absolute top-3 left-3 z-30 flex items-center gap-1.5 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-2.5 py-1 text-xs text-[var(--status-warning)] shadow-sm">
+          <AlertTriangle className="size-3" />
+          Q&A unavailable
+        </div>
       )}
 
       {/* Entity Search Command Palette */}

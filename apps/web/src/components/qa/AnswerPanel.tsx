@@ -188,6 +188,14 @@ const AnswerEntry = memo(function AnswerEntry({
           ))}
         </div>
       )}
+
+      {/* Degradation notice (Qdrant down — graph-only results) */}
+      {(entry.degraded || entry.degradedMessage) && (
+        <p className="mt-1 text-xs text-[var(--status-warning)]">
+          {entry.degradedMessage ??
+            "Results based on graph data only — vector search unavailable"}
+        </p>
+      )}
     </div>
   );
 });

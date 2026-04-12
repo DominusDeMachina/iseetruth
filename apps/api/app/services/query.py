@@ -81,9 +81,16 @@ async def execute_query(
         )
 
         # Handle Qdrant degradation — continue with graph-only if vector search fails
+        vector_degraded = False
         if isinstance(vector_results, Exception):
             logger.warning("Vector search failed, continuing with graph-only results", error=str(vector_results))
             vector_results = []
+            vector_degraded = True
+            yield _sse("query.degraded", {
+                "query_id": query_id,
+                "message": "Vector search unavailable — results based on graph data only",
+                "service": "qdrant",
+            })
         if isinstance(graph_results, Exception):
             raise GraphUnavailableError(f"Graph search failed: {graph_results}")
 
@@ -141,23 +148,29 @@ async def execute_query(
             entities_mentioned=entities_mentioned,
             suggested_followups=suggested_followups,
         )
-        yield _sse("query.complete", response.model_dump())
-        event_publisher.publish(investigation_id, "query.complete", {
+        complete_data = response.model_dump()
+        if vector_degraded:
+            complete_data["degraded"] = True
+        yield _sse("query.complete", complete_data)
+        pub_payload: dict = {
             "query_id": query_id,
             "answer": full_answer,
             "citations": [c.model_dump() for c in citations],
             "entities_mentioned": [e.model_dump() for e in entities_mentioned],
             "suggested_followups": suggested_followups,
-        })
+        }
+        if vector_degraded:
+            pub_payload["degraded"] = True
+        event_publisher.publish(investigation_id, "query.complete", pub_payload)
 
     except GraphUnavailableError as exc:
         logger.error("Graph unavailable during query pipeline", error=str(exc))
-        yield _sse("query.failed", {"query_id": query_id, "error": "Knowledge graph service unavailable"})
+        yield _sse("query.failed", {"query_id": query_id, "error": "Graph database unavailable — unable to answer questions. Document upload and processing still work."})
         event_publisher.publish(investigation_id, "query.failed", {"query_id": query_id, "error": str(exc)})
         raise
     except OllamaUnavailableError as exc:
         logger.error("LLM unavailable during query pipeline", error=str(exc))
-        yield _sse("query.failed", {"query_id": query_id, "error": "LLM service unavailable"})
+        yield _sse("query.failed", {"query_id": query_id, "error": "LLM service unavailable — try again shortly. Graph exploration still works."})
         event_publisher.publish(investigation_id, "query.failed", {"query_id": query_id, "error": str(exc)})
         raise
     except Exception as exc:

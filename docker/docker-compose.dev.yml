@@ -51,6 +51,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --appendonly yes
     ports:
       - "6379:6379"
     restart: unless-stopped
@@ -121,7 +122,7 @@ services:
       context: ..
       dockerfile: docker/app.Dockerfile
     env_file: ../.env
-    command: ["uv", "run", "celery", "-A", "app.worker.celery_app", "worker", "--loglevel=debug"]
+    command: ["uv", "run", "celery", "-A", "app.worker.celery_app", "worker", "-B", "--loglevel=debug"]
     volumes:
       - ../apps/api:/app
     environment:

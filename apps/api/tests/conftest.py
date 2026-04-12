@@ -210,6 +210,7 @@ def sample_document(sample_document_id, sample_investigation_id):
     doc.extracted_text = None
     doc.error_message = None
     doc.failed_stage = None
+    doc.retry_count = 0
     doc.created_at = datetime(2026, 3, 8, 12, 0, 0, tzinfo=timezone.utc)
     doc.updated_at = datetime(2026, 3, 8, 12, 0, 0, tzinfo=timezone.utc)
     return doc

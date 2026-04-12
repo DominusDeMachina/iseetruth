@@ -23,7 +23,20 @@ export function StatusBar() {
     colorClass = "text-[var(--status-success)]";
   } else if (data.status === "degraded") {
     icon = <AlertTriangle className="h-3.5 w-3.5" />;
-    label = "System degraded";
+    // Build specific degradation label
+    const downServices: string[] = [];
+    if (data.services) {
+      for (const [name, svc] of Object.entries(data.services)) {
+        if (svc.status !== "healthy") downServices.push(name);
+      }
+    }
+    if (downServices.includes("qdrant")) {
+      label = "Reduced search capability";
+    } else if (downServices.length > 0) {
+      label = `System degraded — ${downServices.join(", ")} unavailable`;
+    } else {
+      label = "System degraded";
+    }
     colorClass = "text-[var(--status-warning)]";
   } else {
     icon = <XCircle className="h-3.5 w-3.5" />;

@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from celery import Celery
 
 from app.config import get_settings
@@ -14,5 +16,11 @@ celery_app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     task_track_started=True,
+    beat_schedule={
+        "auto-retry-failed-documents": {
+            "task": "auto_retry_failed_documents",
+            "schedule": timedelta(seconds=settings.auto_retry_check_interval_seconds),
+        },
+    },
 )
-celery_app.autodiscover_tasks(["app.worker"], related_name="tasks.process_document")
+celery_app.autodiscover_tasks(["app.worker.tasks"])

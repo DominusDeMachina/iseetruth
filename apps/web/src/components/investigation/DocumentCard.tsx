@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { DeleteDocumentDialog } from "./DeleteDocumentDialog";
 import type { DocumentWithProgress } from "@/hooks/useDocuments";
 import {
+  MAX_AUTO_RETRIES,
   PROCESSING_STAGES,
   statusLabels,
   statusStyles,
@@ -103,6 +104,15 @@ export function DocumentCard({
           {document.status === "failed" && document.error_message && (
             <p className="truncate text-xs text-[var(--status-error)]">
               {document.error_message}
+            </p>
+          )}
+          {document.status === "failed" && (document.retry_count ?? 0) > 0 && (
+            <p
+              className={`text-xs ${(document.retry_count ?? 0) >= MAX_AUTO_RETRIES ? "text-[var(--status-warning)]" : "text-[var(--text-muted)]"}`}
+            >
+              {(document.retry_count ?? 0) >= MAX_AUTO_RETRIES
+                ? "Max retries exceeded \u2014 manual retry available"
+                : `Auto-retried ${document.retry_count}/${MAX_AUTO_RETRIES} times`}
             </p>
           )}
         </div>

@@ -44,14 +44,26 @@ describe("StatusBar", () => {
 
   it("renders degraded summary", () => {
     mockUseHealthStatus.mockReturnValue({
-      data: { status: "degraded" },
+      data: { status: "degraded", services: { ollama: { status: "unavailable" } } },
       isLoading: false,
       isError: false,
     });
 
     renderWithProviders(<StatusBar />);
 
-    expect(screen.getByText("System degraded")).toBeInTheDocument();
+    expect(screen.getByText(/degraded.*ollama/i)).toBeInTheDocument();
+  });
+
+  it("renders reduced search capability when qdrant is down", () => {
+    mockUseHealthStatus.mockReturnValue({
+      data: { status: "degraded", services: { qdrant: { status: "unavailable" } } },
+      isLoading: false,
+      isError: false,
+    });
+
+    renderWithProviders(<StatusBar />);
+
+    expect(screen.getByText("Reduced search capability")).toBeInTheDocument();
   });
 
   it("links to /status page", () => {

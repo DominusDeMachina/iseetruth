@@ -516,4 +516,76 @@ describe("useQueryStream", () => {
     expect(result.current.conversationEntries).toEqual([]);
     expect(result.current.currentStreamingText).toBe("");
   });
+
+  it("handles query.degraded event and sets degradedMessage", async () => {
+    let onmessage: ((ev: { event: string; data: string }) => void) | undefined;
+
+    mockFetchEventSource.mockImplementation(
+      async (_url: string, opts: Record<string, unknown>) => {
+        onmessage = opts.onmessage as typeof onmessage;
+        return new Promise(() => {});
+      },
+    );
+
+    const { result } = renderHook(() => useQueryStream(investigationId));
+
+    act(() => {
+      result.current.submitQuery("test question");
+    });
+
+    await waitFor(() => expect(onmessage).toBeDefined());
+
+    // Simulate degraded event
+    act(() => {
+      onmessage!({
+        event: "query.degraded",
+        data: JSON.stringify({
+          query_id: "q1",
+          message: "Vector search unavailable — results based on graph data only",
+          service: "qdrant",
+        }),
+      });
+    });
+
+    expect(result.current.conversationEntries[0].degradedMessage).toBe(
+      "Vector search unavailable — results based on graph data only",
+    );
+  });
+
+  it("sets degraded flag from query.complete event", async () => {
+    let onmessage: ((ev: { event: string; data: string }) => void) | undefined;
+
+    mockFetchEventSource.mockImplementation(
+      async (_url: string, opts: Record<string, unknown>) => {
+        onmessage = opts.onmessage as typeof onmessage;
+        return new Promise(() => {});
+      },
+    );
+
+    const { result } = renderHook(() => useQueryStream(investigationId));
+
+    act(() => {
+      result.current.submitQuery("test question");
+    });
+
+    await waitFor(() => expect(onmessage).toBeDefined());
+
+    act(() => {
+      onmessage!({
+        event: "query.complete",
+        data: JSON.stringify({
+          query_id: "q1",
+          answer: "Some answer",
+          citations: [],
+          entities_mentioned: [],
+          suggested_followups: [],
+          no_results: false,
+          degraded: true,
+        }),
+      });
+    });
+
+    expect(result.current.conversationEntries[0].degraded).toBe(true);
+    expect(result.current.conversationEntries[0].status).toBe("complete");
+  });
 });

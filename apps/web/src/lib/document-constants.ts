@@ -1,3 +1,6 @@
+/** Maximum auto-retry attempts before requiring manual intervention. */
+export const MAX_AUTO_RETRIES = 5;
+
 /** Document statuses that indicate active processing (not terminal). */
 export const ACTIVE_STATUSES = new Set([
   "queued",

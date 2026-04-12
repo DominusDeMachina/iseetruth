@@ -32,4 +32,6 @@ export interface ConversationEntry {
   noResults: boolean;
   status: "streaming" | "complete" | "error";
   error?: string;
+  degraded?: boolean;
+  degradedMessage?: string;
 }

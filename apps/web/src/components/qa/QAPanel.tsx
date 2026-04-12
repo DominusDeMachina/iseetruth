@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { useQueryStream } from "@/hooks/useQueryStream";
+import { useHealthStatus } from "@/hooks/useHealthStatus";
 import { QueryInput } from "./QueryInput";
 import { AnswerPanel } from "./AnswerPanel";
 import { SuggestedQuestions } from "./SuggestedQuestions";
@@ -33,6 +34,18 @@ export function QAPanel({
     currentStreamingText,
     submitQuery,
   } = useQueryStream(investigationId);
+  const { data: healthData } = useHealthStatus();
+
+  // Ollama unavailability disables Q&A
+  const ollamaUnavailable =
+    healthData?.services?.ollama?.status !== "healthy";
+  const isDisabled =
+    disabled || ollamaUnavailable;
+  const reason = disabled
+    ? disabledReason
+    : ollamaUnavailable
+      ? "LLM service unavailable — try again shortly. Graph exploration still works."
+      : undefined;
 
   useEffect(() => {
     onConversationUpdate?.(conversationEntries);
@@ -111,8 +124,8 @@ export function QAPanel({
         onSubmit={handleSubmit}
         status={queryStatus}
         prefillQuestion={prefillQuestion}
-        disabled={disabled}
-        disabledReason={disabledReason}
+        disabled={isDisabled}
+        disabledReason={reason}
       />
     </div>
   );

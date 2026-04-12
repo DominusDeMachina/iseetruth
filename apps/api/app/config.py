@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     celery_broker_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/1"
 
+    # Auto-retry
+    auto_retry_max_retries: int = 5
+    auto_retry_base_delay_seconds: int = 30
+    auto_retry_check_interval_seconds: int = 60
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):

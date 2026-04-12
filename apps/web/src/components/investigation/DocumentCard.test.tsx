@@ -204,4 +204,40 @@ describe("DocumentCard", () => {
       screen.queryByRole("button", { name: /retry/i }),
     ).not.toBeInTheDocument();
   });
+
+  it("shows auto-retry count when retry_count > 0", () => {
+    const failedDoc = {
+      ...mockDocument,
+      status: "failed",
+      error_message: "Ollama unavailable",
+      retry_count: 3,
+    };
+    render(<DocumentCard document={failedDoc} onDelete={vi.fn()} onRetry={vi.fn()} />);
+    expect(screen.getByText("Auto-retried 3/5 times")).toBeInTheDocument();
+  });
+
+  it("shows max retries exceeded message when retry_count >= 5", () => {
+    const failedDoc = {
+      ...mockDocument,
+      status: "failed",
+      error_message: "Ollama unavailable",
+      retry_count: 5,
+    };
+    render(<DocumentCard document={failedDoc} onDelete={vi.fn()} onRetry={vi.fn()} />);
+    expect(
+      screen.getByText(/Max retries exceeded/),
+    ).toBeInTheDocument();
+  });
+
+  it("does not show auto-retry text when retry_count is 0", () => {
+    const failedDoc = {
+      ...mockDocument,
+      status: "failed",
+      error_message: "Ollama unavailable",
+      retry_count: 0,
+    };
+    render(<DocumentCard document={failedDoc} onDelete={vi.fn()} onRetry={vi.fn()} />);
+    expect(screen.queryByText(/Auto-retried/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Max retries/)).not.toBeInTheDocument();
+  });
 });

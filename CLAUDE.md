@@ -1,5 +1,8 @@
 # OSINT Project — Claude Code Context
 
+When reading large files, run 'wc -l' first to check the line count. If the file is over 2,000 lines, use the 'offset' and
+'limit' parameters on the Read tool to read in chunks rather than attempting to read the entire file at once.
+
 ## Dev Tooling
 
 - **Backend (Python)**: Uses `uv` as package manager. Run commands with `uv run` from `apps/api/`.
