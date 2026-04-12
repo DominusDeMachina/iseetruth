@@ -446,6 +446,8 @@ export interface components {
             entity_count?: number | null;
             /** Extraction Confidence */
             extraction_confidence?: number | null;
+            /** Ocr Confidence */
+            ocr_confidence?: number | null;
             /** Extracted Text */
             extracted_text?: string | null;
             /** Error Message */
@@ -469,6 +471,8 @@ export interface components {
             updated_at: string;
             /** Extraction Quality */
             readonly extraction_quality: string | null;
+            /** Ocr Quality */
+            readonly ocr_quality: string | null;
         };
         /** DocumentTextResponse */
         DocumentTextResponse: {

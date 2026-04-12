@@ -26,6 +26,7 @@ class Document(Base):
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     entity_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     extraction_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ocr_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     failed_stage: Mapped[str | None] = mapped_column(String(30), nullable=True)
     retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

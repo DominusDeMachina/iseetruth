@@ -152,4 +152,69 @@ describe("DocumentTextViewer", () => {
       expect(defaultProps.onOpenChange).toHaveBeenCalledWith(false);
     });
   });
+
+  it("shows OCR source banner for image documents", () => {
+    mockUseDocumentText.mockReturnValue({
+      data: {
+        document_id: "doc-1",
+        filename: "scan.jpg",
+        page_count: 1,
+        extracted_text: "--- Page 1 ---\nSome OCR text",
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(
+      <DocumentTextViewer
+        {...defaultProps}
+        documentType="image"
+        ocrQuality="high"
+      />,
+    );
+    expect(screen.getByTestId("ocr-source-banner")).toBeInTheDocument();
+    expect(screen.getByText(/Text extracted via Tesseract OCR/)).toBeInTheDocument();
+    expect(screen.getByText(/High confidence/)).toBeInTheDocument();
+  });
+
+  it("shows low confidence warning in OCR banner", () => {
+    mockUseDocumentText.mockReturnValue({
+      data: {
+        document_id: "doc-1",
+        filename: "blurry.jpg",
+        page_count: 1,
+        extracted_text: "--- Page 1 ---\nPartial text",
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(
+      <DocumentTextViewer
+        {...defaultProps}
+        documentType="image"
+        ocrQuality="low"
+      />,
+    );
+    expect(screen.getByTestId("ocr-source-banner")).toBeInTheDocument();
+    expect(screen.getByText(/manual review recommended/)).toBeInTheDocument();
+  });
+
+  it("does not show OCR banner for PDF documents", () => {
+    mockUseDocumentText.mockReturnValue({
+      data: {
+        document_id: "doc-1",
+        filename: "report.pdf",
+        page_count: 1,
+        extracted_text: "--- Page 1 ---\nPDF content",
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(
+      <DocumentTextViewer
+        {...defaultProps}
+        documentType="pdf"
+      />,
+    );
+    expect(screen.queryByTestId("ocr-source-banner")).not.toBeInTheDocument();
+  });
 });

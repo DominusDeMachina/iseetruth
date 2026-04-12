@@ -133,7 +133,10 @@ def process_document_task(
                         extracted_text = document.extracted_text
                     elif document.document_type == "image":
                         extractor = ImageExtractionService()
-                        extracted_text = extractor.extract_text(file_path, document_id=document_id)
+                        extracted_text, ocr_confidence = extractor.extract_text(
+                            file_path, document_id=document_id
+                        )
+                        document.ocr_confidence = ocr_confidence
                     else:
                         extractor = TextExtractionService()
                         extracted_text = extractor.extract_text(file_path)
@@ -161,6 +164,7 @@ def process_document_task(
                                 "relationship_count": 0,
                                 "embedded_count": 0,
                                 "extraction_confidence": None,
+                                "ocr_confidence": getattr(document, "ocr_confidence", None),
                             },
                         )
                         return
@@ -452,6 +456,7 @@ def process_document_task(
                         "relationship_count": relationship_count,
                         "embedded_count": emb_summary.embedded_count,
                         "extraction_confidence": avg_confidence,
+                        "ocr_confidence": getattr(document, "ocr_confidence", None),
                     },
                 )
 

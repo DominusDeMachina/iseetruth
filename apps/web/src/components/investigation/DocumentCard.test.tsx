@@ -14,6 +14,8 @@ const mockDocument: DocumentResponse = {
   extracted_text: null,
   error_message: null,
   extraction_quality: null,
+  ocr_quality: null,
+  ocr_confidence: null,
   created_at: "2026-03-08T12:00:00Z",
   updated_at: "2026-03-08T12:00:00Z",
 };
@@ -263,5 +265,66 @@ describe("DocumentCard", () => {
     render(<DocumentCard document={failedDoc} onDelete={vi.fn()} onRetry={vi.fn()} />);
     expect(screen.queryByText(/Auto-retried/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Max retries/)).not.toBeInTheDocument();
+  });
+
+  it("shows OCR quality badge for image documents with high quality", () => {
+    const imageDoc = {
+      ...mockDocument,
+      document_type: "image",
+      status: "complete",
+      ocr_quality: "high" as const,
+      ocr_confidence: 0.85,
+    };
+    render(<DocumentCard document={imageDoc} onDelete={vi.fn()} />);
+    expect(screen.getByText(/OCR: High/)).toBeInTheDocument();
+  });
+
+  it("shows OCR quality badge with warning icon for low quality", () => {
+    const imageDoc = {
+      ...mockDocument,
+      document_type: "image",
+      status: "complete",
+      ocr_quality: "low" as const,
+      ocr_confidence: 0.2,
+    };
+    render(<DocumentCard document={imageDoc} onDelete={vi.fn()} />);
+    expect(screen.getByText(/OCR: Low/)).toBeInTheDocument();
+  });
+
+  it("does not show OCR quality badge for PDF documents", () => {
+    const pdfDoc = {
+      ...mockDocument,
+      document_type: "pdf",
+      status: "complete",
+      ocr_quality: null,
+      ocr_confidence: null,
+    };
+    render(<DocumentCard document={pdfDoc} onDelete={vi.fn()} />);
+    expect(screen.queryByText(/OCR:/)).not.toBeInTheDocument();
+  });
+
+  it("does not show OCR quality badge when ocr_quality is null for image", () => {
+    const imageDoc = {
+      ...mockDocument,
+      document_type: "image",
+      status: "queued",
+      ocr_quality: null,
+      ocr_confidence: null,
+    };
+    render(<DocumentCard document={imageDoc} onDelete={vi.fn()} />);
+    expect(screen.queryByText(/OCR:/)).not.toBeInTheDocument();
+  });
+
+  it("shows OCR quality badge with tooltip", () => {
+    const imageDoc = {
+      ...mockDocument,
+      document_type: "image",
+      status: "complete",
+      ocr_quality: "medium" as const,
+      ocr_confidence: 0.5,
+    };
+    render(<DocumentCard document={imageDoc} onDelete={vi.fn()} />);
+    const badge = screen.getByText(/OCR: Medium/).closest("[title]");
+    expect(badge).toHaveAttribute("title", expect.stringContaining("Medium"));
   });
 });

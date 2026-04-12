@@ -20,6 +20,7 @@ class DocumentResponse(BaseModel):
     page_count: int | None
     entity_count: int | None = None
     extraction_confidence: float | None = None
+    ocr_confidence: float | None = None
     extracted_text: str | None = None
     error_message: str | None = None
     failed_stage: str | None = None
@@ -33,6 +34,17 @@ class DocumentResponse(BaseModel):
         if self.extraction_confidence >= 0.7:
             return "high"
         if self.extraction_confidence >= 0.4:
+            return "medium"
+        return "low"
+
+    @computed_field
+    @property
+    def ocr_quality(self) -> str | None:
+        if self.ocr_confidence is None:
+            return None
+        if self.ocr_confidence >= 0.7:
+            return "high"
+        if self.ocr_confidence >= 0.4:
             return "medium"
         return "low"
 
