@@ -15,6 +15,7 @@ from app.services.events import EventPublisher
 from app.services.extraction import EntityExtractionService
 from app.services.image_extraction import ImageExtractionService
 from app.services.text_extraction import TextExtractionService
+from app.services import web_capture
 from app.worker.celery_app import celery_app
 
 settings = get_settings()
@@ -122,7 +123,15 @@ def process_document_task(
                     file_path = STORAGE_ROOT / investigation_id / f"{document_id}{ext}"
 
                     # Route extraction by document type
-                    if document.document_type == "image":
+                    if document.document_type == "web":
+                        # Web documents: fetch URL, store HTML, convert to text
+                        web_capture.fetch_and_store(
+                            document_id, investigation_id, document.source_url, session
+                        )
+                        # Re-read document to get updated extracted_text
+                        session.refresh(document)
+                        extracted_text = document.extracted_text
+                    elif document.document_type == "image":
                         extractor = ImageExtractionService()
                         extracted_text = extractor.extract_text(file_path, document_id=document_id)
                     else:
@@ -132,14 +141,14 @@ def process_document_task(
                     document.extracted_text = extracted_text
                     session.commit()
 
-                    # Early exit for empty OCR: mark complete, skip remaining stages
-                    if document.document_type == "image" and not extracted_text:
+                    # Early exit for empty text: mark complete, skip remaining stages
+                    if document.document_type in ("image", "web") and not extracted_text:
                         document.status = "complete"
                         document.entity_count = 0
                         session.commit()
 
                         logger.info(
-                            "Image OCR returned no text — marking complete",
+                            "Text extraction returned no text — marking complete",
                             document_id=document_id,
                             investigation_id=investigation_id,
                         )

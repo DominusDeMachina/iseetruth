@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, useState, useMemo } from "react";
-import { RefreshCw, Search, AlertTriangle } from "lucide-react";
+import { RefreshCw, Search, AlertTriangle, Plus } from "lucide-react";
 import { useCytoscape } from "@/hooks/useCytoscape";
 import { useHealthStatus } from "@/hooks/useHealthStatus";
 import {
@@ -15,6 +15,9 @@ import { GraphFilterPanel } from "./GraphFilterPanel";
 import { EntityDetailCard } from "./EntityDetailCard";
 import { EdgeDetailPopover } from "./EdgeDetailPopover";
 import { EntitySearchCommand } from "./EntitySearchCommand";
+import { AddEntityDialog } from "./AddEntityDialog";
+import { CrossInvestigationPanel } from "@/components/cross-investigation/CrossInvestigationPanel";
+import { useCrossInvestigation } from "@/hooks/useCrossInvestigation";
 
 interface GraphCanvasProps {
   investigationId: string;
@@ -98,7 +101,15 @@ export function GraphCanvas({
 
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
+  const [addEntityOpen, setAddEntityOpen] = useState(false);
   const [highlightedEntityIds, setHighlightedEntityIds] = useState<string[]>([]);
+
+  // Cross-investigation panel state
+  const [crossInvestigationOpen, setCrossInvestigationOpen] = useState(false);
+  const [lastSeenMatchCount, setLastSeenMatchCount] = useState(0);
+  const { data: crossInvestigationData } = useCrossInvestigation(
+    investigationId,
+  );
 
   // Tooltip ref for node hover
   const tooltipRef = useRef<HTMLDivElement | null>(null);
@@ -601,19 +612,46 @@ export function GraphCanvas({
       )}
 
       {cy && !overlay && (
-        <GraphControls cy={cy} onRelayout={handleRelayout} />
+        <GraphControls
+          cy={cy}
+          onRelayout={handleRelayout}
+          crossInvestigationCount={
+            (crossInvestigationData?.total_matches ?? 0) > lastSeenMatchCount
+              ? (crossInvestigationData?.total_matches ?? 0) - lastSeenMatchCount
+              : undefined
+          }
+          onToggleCrossInvestigation={() => {
+            setCrossInvestigationOpen((prev) => {
+              if (!prev && crossInvestigationData) {
+                setLastSeenMatchCount(crossInvestigationData.total_matches);
+              }
+              return !prev;
+            });
+          }}
+          crossInvestigationOpen={crossInvestigationOpen}
+        />
       )}
 
-      {/* Search button */}
+      {/* Toolbar buttons */}
       {cy && !overlay && (
-        <button
-          onClick={() => setSearchOpen(true)}
-          className="absolute top-3 right-3 z-30 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-1.5 shadow-lg transition-colors hover:bg-[var(--bg-hover)]"
-          title="Search entities (⌘K)"
-          aria-label="Search entities"
-        >
-          <Search className="size-4 text-[var(--text-primary)]" />
-        </button>
+        <div className="absolute top-3 right-3 z-30 flex gap-1.5">
+          <button
+            onClick={() => setAddEntityOpen(true)}
+            className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-1.5 shadow-lg transition-colors hover:bg-[var(--bg-hover)]"
+            title="Add entity"
+            aria-label="Add entity"
+          >
+            <Plus className="size-4 text-[var(--text-primary)]" />
+          </button>
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-1.5 shadow-lg transition-colors hover:bg-[var(--bg-hover)]"
+            title="Search entities (⌘K)"
+            aria-label="Search entities"
+          >
+            <Search className="size-4 text-[var(--text-primary)]" />
+          </button>
+        </div>
       )}
 
       {/* Ollama degradation badge — graph works, but Q&A is unavailable */}
@@ -630,6 +668,13 @@ export function GraphCanvas({
         open={searchOpen}
         onOpenChange={setSearchOpen}
         onSelectEntity={handleSearchSelect}
+      />
+
+      {/* Add Entity Dialog */}
+      <AddEntityDialog
+        investigationId={investigationId}
+        open={addEntityOpen}
+        onOpenChange={setAddEntityOpen}
       />
 
       {/* Entity Detail Card */}
@@ -653,6 +698,14 @@ export function GraphCanvas({
           position={cardPosition}
           onClose={clearSelection}
           onNavigateToEntity={handleNavigateToEntity}
+        />
+      )}
+
+      {/* Cross-Investigation Panel */}
+      {crossInvestigationOpen && (
+        <CrossInvestigationPanel
+          investigationId={investigationId}
+          onClose={() => setCrossInvestigationOpen(false)}
         />
       )}
     </div>

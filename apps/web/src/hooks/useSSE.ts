@@ -10,11 +10,12 @@ interface SSEEvent {
     | "document.processing"
     | "document.complete"
     | "document.failed"
-    | "entity.discovered";
+    | "entity.discovered"
+    | "cross_investigation.matches_found";
   investigation_id: string;
   timestamp: string;
   payload: {
-    document_id: string;
+    document_id?: string;
     stage?: string;
     progress?: number;
     chunk_count?: number;
@@ -26,6 +27,12 @@ interface SSEEvent {
     extraction_confidence?: number;
     entity_type?: string;
     entity_name?: string;
+    match_count?: number;
+    new_matches?: Array<{
+      entity_name: string;
+      entity_type: string;
+      matched_investigations: string[];
+    }>;
   };
 }
 
@@ -138,6 +145,12 @@ export function useSSE(
         });
         queryClient.invalidateQueries({
           queryKey: ["entities", investigationId],
+        });
+      }
+
+      if (event.type === "cross_investigation.matches_found") {
+        queryClient.invalidateQueries({
+          queryKey: ["cross-investigation", investigationId],
         });
       }
     },
