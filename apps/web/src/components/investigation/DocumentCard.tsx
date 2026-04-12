@@ -174,6 +174,19 @@ export function DocumentCard({
           </Badge>
         )}
 
+        {document.document_type === "image" && document.ocr_method && (
+          <Badge
+            variant="outline"
+            className="bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border-subtle)]"
+          >
+            {document.ocr_method === "tesseract+moondream2"
+              ? "Tesseract + Vision AI"
+              : document.ocr_method === "moondream2"
+                ? "Vision AI"
+                : "Tesseract"}
+          </Badge>
+        )}
+
         {document.status === "failed" && onRetry && (
           <Button
             variant="ghost"

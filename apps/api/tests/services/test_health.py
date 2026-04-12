@@ -102,8 +102,17 @@ async def test_check_ollama_healthy(svc, mock_ollama_healthy):
     result = await svc.check_ollama()
     assert result.status == "healthy"
     assert result.models_ready is True
-    assert len(result.models) == 2
+    assert len(result.models) == 3  # qwen3.5:9b, moondream2, qwen3-embedding:8b
     assert all(m.available for m in result.models)
+
+
+@pytest.mark.asyncio
+async def test_check_ollama_includes_moondream2(svc, mock_ollama_healthy):
+    result = await svc.check_ollama()
+    model_names = [m.name for m in result.models]
+    assert "moondream2" in model_names
+    moondream = next(m for m in result.models if m.name == "moondream2")
+    assert moondream.available is True
 
 
 @pytest.mark.asyncio

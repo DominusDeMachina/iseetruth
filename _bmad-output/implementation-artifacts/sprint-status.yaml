@@ -100,7 +100,7 @@ development_status:
   # Epic 7: Image Document Processing (OCR)
   epic-7: in-progress
   7-1-image-upload-tesseract-ocr-text-extraction: done
-  7-2-moondream2-enhanced-image-understanding: backlog
+  7-2-moondream2-enhanced-image-understanding: done
   7-3-ocr-quality-confidence-indicators: backlog
   epic-7-retrospective: optional
 

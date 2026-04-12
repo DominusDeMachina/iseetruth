@@ -132,8 +132,13 @@ def process_document_task(
                         session.refresh(document)
                         extracted_text = document.extracted_text
                     elif document.document_type == "image":
-                        extractor = ImageExtractionService()
-                        extracted_text = extractor.extract_text(file_path, document_id=document_id)
+                        extractor = ImageExtractionService(
+                            ollama_base_url=settings.ollama_base_url
+                        )
+                        extracted_text, ocr_method = extractor.extract_text(
+                            file_path, document_id=document_id
+                        )
+                        document.ocr_method = ocr_method
                     else:
                         extractor = TextExtractionService()
                         extracted_text = extractor.extract_text(file_path)

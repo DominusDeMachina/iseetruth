@@ -21,6 +21,7 @@ class DocumentResponse(BaseModel):
     entity_count: int | None = None
     extraction_confidence: float | None = None
     extracted_text: str | None = None
+    ocr_method: str | None = None
     error_message: str | None = None
     failed_stage: str | None = None
     retry_count: int = 0

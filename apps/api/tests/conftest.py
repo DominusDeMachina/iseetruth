@@ -52,7 +52,7 @@ def mock_redis():
 
 @pytest.fixture
 def mock_ollama_healthy(monkeypatch):
-    """Mock httpx call to Ollama returning both required models."""
+    """Mock httpx call to Ollama returning all required models."""
     import httpx
 
     async def mock_get(self, url, **kwargs):
@@ -62,6 +62,7 @@ def mock_ollama_healthy(monkeypatch):
         resp.json.return_value = {
             "models": [
                 {"name": "qwen3.5:9b"},
+                {"name": "moondream2"},
                 {"name": "qwen3-embedding:8b"},
             ]
         }
@@ -210,6 +211,7 @@ def sample_document(sample_document_id, sample_investigation_id):
     doc.entity_count = None
     doc.extraction_confidence = None
     doc.extracted_text = None
+    doc.ocr_method = None
     doc.error_message = None
     doc.failed_stage = None
     doc.retry_count = 0

@@ -38,7 +38,7 @@ def test_health_endpoint_models_not_ready(
     data = response.json()
     ollama = data["services"]["ollama"]
     assert ollama["models_ready"] is False
-    assert len(ollama["models"]) == 2
+    assert len(ollama["models"]) == 3  # qwen3.5:9b, moondream2, qwen3-embedding:8b
     assert all(m["available"] is False for m in ollama["models"])
 
 

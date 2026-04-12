@@ -503,6 +503,7 @@ def test_upload_mixed_pdf_and_jpeg(
     pdf_doc.entity_count = None
     pdf_doc.extraction_confidence = None
     pdf_doc.extracted_text = None
+    pdf_doc.ocr_method = None
     pdf_doc.error_message = None
     pdf_doc.failed_stage = None
     pdf_doc.retry_count = 0
@@ -522,6 +523,7 @@ def test_upload_mixed_pdf_and_jpeg(
     img_doc.entity_count = None
     img_doc.extraction_confidence = None
     img_doc.extracted_text = None
+    img_doc.ocr_method = None
     img_doc.error_message = None
     img_doc.failed_stage = None
     img_doc.retry_count = 0
@@ -555,33 +557,45 @@ def test_image_extraction_service_returns_text_with_page_marker():
     """ImageExtractionService wraps OCR text in page marker format."""
     with patch("app.services.image_extraction.Image") as mock_pil, \
          patch("app.services.image_extraction.pytesseract") as mock_tess:
-        mock_pil.open.return_value = MagicMock()
+        mock_img = MagicMock()
+        mock_img.width = 800
+        mock_img.height = 600
+        mock_img.__enter__ = MagicMock(return_value=mock_img)
+        mock_img.__exit__ = MagicMock(return_value=False)
+        mock_pil.open.return_value = mock_img
         mock_tess.image_to_string.return_value = "Hello World"
 
         from app.services.image_extraction import ImageExtractionService
         from pathlib import Path
 
         service = ImageExtractionService()
-        result = service.extract_text(Path("/fake/image.jpg"), document_id="test-id")
+        text, method = service.extract_text(Path("/fake/image.jpg"), document_id="test-id")
 
-        assert result == "--- Page 1 ---\nHello World"
-        mock_pil.open.assert_called_once_with(Path("/fake/image.jpg"))
+        assert "--- Page 1 ---" in text
+        assert "Hello World" in text
+        assert method == "tesseract"
 
 
 def test_image_extraction_service_empty_ocr_returns_empty_string():
     """Empty OCR result returns empty string, not an error."""
     with patch("app.services.image_extraction.Image") as mock_pil, \
          patch("app.services.image_extraction.pytesseract") as mock_tess:
-        mock_pil.open.return_value = MagicMock()
+        mock_img = MagicMock()
+        mock_img.width = 800
+        mock_img.height = 600
+        mock_img.__enter__ = MagicMock(return_value=mock_img)
+        mock_img.__exit__ = MagicMock(return_value=False)
+        mock_pil.open.return_value = mock_img
         mock_tess.image_to_string.return_value = "   \n  "
 
         from app.services.image_extraction import ImageExtractionService
         from pathlib import Path
 
         service = ImageExtractionService()
-        result = service.extract_text(Path("/fake/blank.png"), document_id="test-id")
+        text, method = service.extract_text(Path("/fake/blank.png"), document_id="test-id")
 
-        assert result == ""
+        assert text == ""
+        assert method == "tesseract"
 
 
 def test_process_document_routes_image_to_ocr():
@@ -638,9 +652,9 @@ def test_process_document_routes_image_to_ocr():
         # Setup neo4j
         mock_neo4j.driver.return_value = MagicMock()
 
-        # Setup extraction service to return text
+        # Setup extraction service to return text and ocr_method
         mock_img_instance = MagicMock()
-        mock_img_instance.extract_text.return_value = "--- Page 1 ---\nExtracted text"
+        mock_img_instance.extract_text.return_value = ("--- Page 1 ---\nExtracted text", "tesseract")
         mock_img_svc.return_value = mock_img_instance
 
         # Setup chunking

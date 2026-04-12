@@ -448,6 +448,8 @@ export interface components {
             extraction_confidence?: number | null;
             /** Extracted Text */
             extracted_text?: string | null;
+            /** Ocr Method */
+            ocr_method?: string | null;
             /** Error Message */
             error_message?: string | null;
             /** Failed Stage */

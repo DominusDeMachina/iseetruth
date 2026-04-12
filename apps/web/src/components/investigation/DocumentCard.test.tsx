@@ -264,4 +264,50 @@ describe("DocumentCard", () => {
     expect(screen.queryByText(/Auto-retried/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Max retries/)).not.toBeInTheDocument();
   });
+
+  it("shows 'Tesseract + Vision AI' badge when ocr_method is tesseract+moondream2", () => {
+    const imageDoc = {
+      ...mockDocument,
+      document_type: "image",
+      status: "complete",
+      ocr_method: "tesseract+moondream2",
+    };
+    render(<DocumentCard document={imageDoc} onDelete={vi.fn()} />);
+    expect(screen.getByText("Tesseract + Vision AI")).toBeInTheDocument();
+  });
+
+  it("shows 'Tesseract' badge when ocr_method is tesseract for image docs", () => {
+    const imageDoc = {
+      ...mockDocument,
+      document_type: "image",
+      status: "complete",
+      ocr_method: "tesseract",
+    };
+    render(<DocumentCard document={imageDoc} onDelete={vi.fn()} />);
+    expect(screen.getByText("Tesseract")).toBeInTheDocument();
+  });
+
+  it("shows 'Vision AI' badge when ocr_method is moondream2", () => {
+    const imageDoc = {
+      ...mockDocument,
+      document_type: "image",
+      status: "complete",
+      ocr_method: "moondream2",
+    };
+    render(<DocumentCard document={imageDoc} onDelete={vi.fn()} />);
+    expect(screen.getByText("Vision AI")).toBeInTheDocument();
+  });
+
+  it("does not show OCR method badge for PDF documents", () => {
+    const pdfDoc = {
+      ...mockDocument,
+      document_type: "pdf",
+      status: "complete",
+      ocr_method: null,
+    };
+    render(<DocumentCard document={pdfDoc} onDelete={vi.fn()} />);
+    expect(screen.queryByText("Tesseract")).not.toBeInTheDocument();
+    expect(screen.queryByText("Vision AI")).not.toBeInTheDocument();
+    expect(screen.queryByText("Tesseract + Vision AI")).not.toBeInTheDocument();
+  });
 });

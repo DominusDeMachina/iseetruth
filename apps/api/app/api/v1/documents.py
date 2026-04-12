@@ -70,6 +70,7 @@ def _to_response(document, include_text: bool = False) -> DocumentResponse:
         entity_count=document.entity_count,
         extraction_confidence=document.extraction_confidence,
         extracted_text=document.extracted_text if include_text else None,
+        ocr_method=document.ocr_method,
         error_message=document.error_message,
         failed_stage=document.failed_stage,
         retry_count=document.retry_count,

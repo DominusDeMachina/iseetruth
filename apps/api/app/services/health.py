@@ -21,8 +21,9 @@ from app.schemas.health import (
 )
 
 CHAT_MODELS = ["qwen3.5:9b"]
+VISION_MODELS = ["moondream2"]
 EMBEDDING_MODELS = ["qwen3-embedding:8b"]
-REQUIRED_MODELS = CHAT_MODELS + EMBEDDING_MODELS
+REQUIRED_MODELS = CHAT_MODELS + VISION_MODELS + EMBEDDING_MODELS
 CHECK_TIMEOUT = 5.0  # seconds
 MIN_RAM_GB = 12
 
@@ -111,12 +112,14 @@ class HealthService:
         emb_failed = False
 
         try:
-            _, chat_infos = await self._check_ollama_instance(settings.ollama_base_url, CHAT_MODELS)
+            _, chat_infos = await self._check_ollama_instance(
+                settings.ollama_base_url, CHAT_MODELS + VISION_MODELS
+            )
             models.extend(chat_infos)
         except Exception as exc:
             chat_failed = True
             logger.warning("Ollama chat instance health check failed", error=str(exc))
-            models.extend([ModelInfo(name=name, available=False) for name in CHAT_MODELS])
+            models.extend([ModelInfo(name=name, available=False) for name in CHAT_MODELS + VISION_MODELS])
 
         try:
             _, emb_infos = await self._check_ollama_instance(settings.ollama_embedding_url, EMBEDDING_MODELS)
