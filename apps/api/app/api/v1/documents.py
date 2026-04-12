@@ -4,9 +4,12 @@ from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from urllib.parse import urlparse
+
 from app.db.postgres import get_db
-from app.exceptions import DocumentNotReadyError, DocumentNotRetryableError, InvalidFileTypeError
+from app.exceptions import DocumentNotReadyError, DocumentNotRetryableError, InvalidFileTypeError, InvalidUrlError
 from app.schemas.document import (
+    CaptureWebPageRequest,
     DocumentListResponse,
     DocumentResponse,
     DocumentTextResponse,
@@ -61,6 +64,7 @@ def _to_response(document, include_text: bool = False) -> DocumentResponse:
         size_bytes=document.size_bytes,
         sha256_checksum=document.sha256_checksum,
         document_type=document.document_type,
+        source_url=document.source_url,
         status=document.status,
         page_count=document.page_count,
         entity_count=document.entity_count,
@@ -137,6 +141,71 @@ async def upload_documents(
         raise InvalidFileTypeError("; ".join(errors))
 
     return UploadDocumentsResponse(items=results, errors=errors)
+
+
+@router.post("/capture", status_code=201, response_model=DocumentResponse)
+async def capture_web_page(
+    investigation_id: uuid.UUID,
+    body: CaptureWebPageRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    url = body.url.strip()
+
+    # Validate URL format
+    if not url:
+        raise InvalidUrlError("URL must not be empty")
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise InvalidUrlError(
+            f"URL must use http or https scheme (got '{parsed.scheme or 'none'}')"
+        )
+    if not parsed.hostname:
+        raise InvalidUrlError("URL must include a hostname")
+
+    # Verify investigation exists
+    from app.services.investigation import InvestigationService
+    inv_service = InvestigationService(db)
+    await inv_service.get_investigation(investigation_id)
+
+    # Create document record with placeholder values — worker fills in after fetch
+    from app.models.document import Document
+    document_id = uuid.uuid4()
+    document = Document(
+        id=document_id,
+        investigation_id=investigation_id,
+        filename=parsed.hostname or "web-capture",
+        size_bytes=0,
+        sha256_checksum="",
+        document_type="web",
+        source_url=url,
+        status="queued",
+        page_count=None,
+        retry_count=0,
+    )
+    db.add(document)
+    await db.commit()
+    await db.refresh(document)
+
+    logger.info(
+        "Web capture queued",
+        document_id=str(document_id),
+        url=url,
+        investigation_id=str(investigation_id),
+    )
+
+    # Enqueue Celery task for async capture and processing
+    try:
+        from app.worker.tasks.process_document import process_document_task
+        process_document_task.delay(str(document_id), str(investigation_id))
+    except Exception as exc:
+        logger.warning(
+            "Failed to enqueue web capture task",
+            document_id=str(document_id),
+            investigation_id=str(investigation_id),
+            error=str(exc),
+        )
+
+    return _to_response(document)
 
 
 @router.get("", response_model=DocumentListResponse)

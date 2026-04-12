@@ -4,6 +4,10 @@ from datetime import datetime
 from pydantic import BaseModel, computed_field
 
 
+class CaptureWebPageRequest(BaseModel):
+    url: str
+
+
 class DocumentResponse(BaseModel):
     id: uuid.UUID
     investigation_id: uuid.UUID
@@ -11,6 +15,7 @@ class DocumentResponse(BaseModel):
     size_bytes: int
     sha256_checksum: str
     document_type: str = "pdf"
+    source_url: str | None = None
     status: str
     page_count: int | None
     entity_count: int | None = None

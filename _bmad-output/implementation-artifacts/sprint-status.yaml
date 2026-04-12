@@ -114,7 +114,7 @@ development_status:
 
   # Epic 9: Web Page Ingestion
   epic-9: in-progress
-  9-1-web-page-capture-storage: review
+  9-1-web-page-capture-storage: done
   9-2-web-document-processing-entity-extraction: backlog
   epic-9-retrospective: optional
 

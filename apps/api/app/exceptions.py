@@ -109,7 +109,7 @@ class EntityDuplicateError(DomainError):
 class WebCaptureError(DomainError):
     def __init__(self, url: str, detail: str):
         super().__init__(
-            detail=f"Could not reach URL: {detail}",
+            detail=f"Could not reach URL ({url}): {detail}",
             status_code=422,
             error_type="web_capture_failed",
         )

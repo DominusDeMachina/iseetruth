@@ -24,6 +24,13 @@ def _get_ext_from_filename(filename: str) -> str:
     return ext if ext else ".pdf"
 
 
+def _get_storage_ext(document) -> str:
+    """Return storage file extension for a document, accounting for document_type."""
+    if document.document_type == "web":
+        return ".html"
+    return _get_ext_from_filename(document.filename)
+
+
 def _get_page_count(file_path: Path) -> int | None:
     try:
         doc = pymupdf.open(str(file_path))
@@ -216,7 +223,7 @@ class DocumentService:
 
         # Remove file from storage
         try:
-            ext = _get_ext_from_filename(document.filename)
+            ext = _get_storage_ext(document)
             file_path = STORAGE_ROOT / str(investigation_id) / f"{document_id}{ext}"
             if file_path.exists():
                 file_path.unlink()

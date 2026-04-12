@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Eye, FileText, ImageIcon, RotateCcw, Trash2 } from "lucide-react";
+import { AlertTriangle, Eye, FileText, Globe, ImageIcon, RotateCcw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteDocumentDialog } from "./DeleteDocumentDialog";
@@ -65,7 +65,9 @@ export function DocumentCard({
   return (
     <>
       <div className="group flex items-center gap-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-3 transition-colors hover:bg-[var(--bg-hover)]">
-        {document.document_type === "image" ? (
+        {document.document_type === "web" ? (
+          <Globe className="size-5 shrink-0 text-[var(--text-muted)]" />
+        ) : document.document_type === "image" ? (
           <ImageIcon className="size-5 shrink-0 text-[var(--text-muted)]" />
         ) : (
           <FileText className="size-5 shrink-0 text-[var(--text-muted)]" />
@@ -75,6 +77,11 @@ export function DocumentCard({
           <p className="truncate font-medium text-[var(--text-primary)]">
             {document.filename}
           </p>
+          {document.source_url && (
+            <p className="truncate text-xs text-[var(--text-muted)]">
+              {document.source_url}
+            </p>
+          )}
           <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
             <span>{formatFileSize(document.size_bytes)}</span>
             <span>&middot;</span>

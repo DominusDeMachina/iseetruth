@@ -1,10 +1,11 @@
 import { lazy, Suspense, useState, useCallback, useRef, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, RefreshCw, FileText, Wifi, WifiOff } from "lucide-react";
+import { ArrowLeft, Globe, RefreshCw, FileText, Wifi, WifiOff } from "lucide-react";
 import { useInvestigation } from "@/hooks/useInvestigations";
 import {
   useDocuments,
   useUploadDocuments,
+  useCaptureWebPage,
   useDeleteDocument,
   useRetryDocument,
 } from "@/hooks/useDocuments";
@@ -12,6 +13,7 @@ import { useSSE } from "@/hooks/useSSE";
 import { ACTIVE_STATUSES, statusLabels } from "@/lib/document-constants";
 import { useEntities } from "@/hooks/useEntities";
 import { DocumentUploadZone } from "@/components/investigation/DocumentUploadZone";
+import { CaptureWebPageDialog } from "@/components/investigation/CaptureWebPageDialog";
 import { DocumentList } from "@/components/investigation/DocumentList";
 import { DocumentTextViewer } from "@/components/investigation/DocumentTextViewer";
 import { ProcessingDashboard } from "@/components/investigation/ProcessingDashboard";
@@ -20,6 +22,7 @@ import { SplitView } from "@/components/layout/SplitView";
 import { PanelErrorBoundary } from "@/components/layout/PanelErrorBoundary";
 import { QAPanel } from "@/components/qa/QAPanel";
 import { CitationModal } from "@/components/qa/CitationModal";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -44,6 +47,7 @@ function InvestigationDetail() {
   const { data: investigation, isLoading, isError } = useInvestigation(id);
   const { data: documentsData, isLoading: isLoadingDocs } = useDocuments(id);
   const uploadMutation = useUploadDocuments(id);
+  const captureMutation = useCaptureWebPage(id);
   const deleteMutation = useDeleteDocument(id);
   const retryMutation = useRetryDocument(id);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -51,6 +55,7 @@ function InvestigationDetail() {
   const [retryError, setRetryError] = useState(false);
   const [viewingDocumentId, setViewingDocumentId] = useState<string | null>(null);
   const [docsDialogOpen, setDocsDialogOpen] = useState(false);
+  const [captureDialogOpen, setCaptureDialogOpen] = useState(false);
   const [prefillQuestion, setPrefillQuestion] = useState<string | undefined>();
   const [highlightEntities, setHighlightEntities] = useState<string[]>([]);
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
@@ -183,6 +188,27 @@ function InvestigationDetail() {
         onUpload={(files) => uploadMutation.mutate(files)}
         isUploading={uploadMutation.isPending}
         hasDocuments={documents.length > 0}
+      />
+
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setCaptureDialogOpen(true)}
+        className="self-start gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+      >
+        <Globe className="size-4" />
+        Capture Web Page
+      </Button>
+
+      <CaptureWebPageDialog
+        open={captureDialogOpen}
+        onOpenChange={setCaptureDialogOpen}
+        onCapture={(url) => {
+          captureMutation.mutate(url, {
+            onSuccess: () => setCaptureDialogOpen(false),
+          });
+        }}
+        isPending={captureMutation.isPending}
       />
 
       {documents.length > 0 && (

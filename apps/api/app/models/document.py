@@ -20,6 +20,7 @@ class Document(Base):
     document_type: Mapped[str] = mapped_column(
         String(10), nullable=False, server_default="pdf"
     )
+    source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)

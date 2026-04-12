@@ -497,6 +497,7 @@ def test_upload_mixed_pdf_and_jpeg(
     pdf_doc.size_bytes = 1024
     pdf_doc.sha256_checksum = "a" * 64
     pdf_doc.document_type = "pdf"
+    pdf_doc.source_url = None
     pdf_doc.status = "queued"
     pdf_doc.page_count = 5
     pdf_doc.entity_count = None
@@ -515,6 +516,7 @@ def test_upload_mixed_pdf_and_jpeg(
     img_doc.size_bytes = 2048
     img_doc.sha256_checksum = "b" * 64
     img_doc.document_type = "image"
+    img_doc.source_url = None
     img_doc.status = "queued"
     img_doc.page_count = 1
     img_doc.entity_count = None
@@ -670,3 +672,112 @@ def test_process_document_routes_image_to_ocr():
         # Verify ImageExtractionService was used, not TextExtractionService
         mock_img_svc.assert_called_once()
         mock_txt_svc.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# POST /documents/capture — web page capture (Story 9.1)
+# ---------------------------------------------------------------------------
+
+
+def test_capture_web_page_returns_201(
+    investigation_client,
+    mock_db_session,
+    sample_investigation_id,
+):
+    """Capture endpoint with valid URL creates document and returns 201."""
+    from datetime import datetime, timezone
+
+    mock_db_session.add = MagicMock()
+    mock_db_session.commit = AsyncMock()
+
+    # refresh populates server-generated fields
+    async def _refresh(obj, **kwargs):
+        obj.created_at = datetime(2026, 4, 12, 0, 0, 0, tzinfo=timezone.utc)
+        obj.updated_at = datetime(2026, 4, 12, 0, 0, 0, tzinfo=timezone.utc)
+
+    mock_db_session.refresh = AsyncMock(side_effect=_refresh)
+
+    with patch("app.services.investigation.InvestigationService") as mock_inv_cls, \
+         patch("app.worker.tasks.process_document.process_document_task") as mock_task:
+        mock_inv_svc = AsyncMock()
+        mock_inv_cls.return_value = mock_inv_svc
+        mock_inv_svc.get_investigation = AsyncMock()
+        mock_task.delay = MagicMock()
+
+        response = investigation_client.post(
+            f"/api/v1/investigations/{sample_investigation_id}/documents/capture",
+            json={"url": "https://example.com/article"},
+        )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["document_type"] == "web"
+    assert data["source_url"] == "https://example.com/article"
+    assert data["status"] == "queued"
+    assert data["filename"] == "example.com"
+
+
+def test_capture_web_page_invalid_url_returns_422(
+    investigation_client,
+    mock_db_session,
+    sample_investigation_id,
+):
+    """Capture endpoint with invalid URL returns 422."""
+    response = investigation_client.post(
+        f"/api/v1/investigations/{sample_investigation_id}/documents/capture",
+        json={"url": "not-a-url"},
+    )
+    assert response.status_code == 422
+    data = response.json()
+    assert data["type"] == "urn:osint:error:invalid_url"
+
+
+def test_capture_web_page_empty_url_returns_422(
+    investigation_client,
+    mock_db_session,
+    sample_investigation_id,
+):
+    """Capture endpoint with empty URL returns 422."""
+    response = investigation_client.post(
+        f"/api/v1/investigations/{sample_investigation_id}/documents/capture",
+        json={"url": ""},
+    )
+    assert response.status_code == 422
+    data = response.json()
+    assert data["type"] == "urn:osint:error:invalid_url"
+
+
+def test_capture_web_page_ftp_scheme_returns_422(
+    investigation_client,
+    mock_db_session,
+    sample_investigation_id,
+):
+    """Capture endpoint with ftp:// URL returns 422."""
+    response = investigation_client.post(
+        f"/api/v1/investigations/{sample_investigation_id}/documents/capture",
+        json={"url": "ftp://files.example.com/doc.pdf"},
+    )
+    assert response.status_code == 422
+    data = response.json()
+    assert data["type"] == "urn:osint:error:invalid_url"
+    assert "http or https" in data["detail"]
+
+
+def test_capture_web_page_investigation_not_found_returns_404(
+    investigation_client,
+    mock_db_session,
+):
+    """Capture endpoint with invalid investigation_id returns 404."""
+    bad_id = uuid.UUID("99999999-9999-9999-9999-999999999999")
+    with patch("app.services.investigation.InvestigationService") as mock_inv_cls:
+        mock_inv_svc = AsyncMock()
+        mock_inv_cls.return_value = mock_inv_svc
+        mock_inv_svc.get_investigation = AsyncMock(
+            side_effect=InvestigationNotFoundError(str(bad_id))
+        )
+
+        response = investigation_client.post(
+            f"/api/v1/investigations/{bad_id}/documents/capture",
+            json={"url": "https://example.com"},
+        )
+    assert response.status_code == 404

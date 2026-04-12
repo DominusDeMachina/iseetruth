@@ -157,6 +157,40 @@ export function useRetryDocument(investigationId: string) {
   });
 }
 
+export function useCaptureWebPage(investigationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation<DocumentResponse, Error, string>({
+    mutationFn: async (url) => {
+      const { data, error } = await api.POST(
+        "/api/v1/investigations/{investigation_id}/documents/capture",
+        {
+          params: { path: { investigation_id: investigationId } },
+          body: { url },
+        },
+      );
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (response) => {
+      queryClient.setQueryData<DocumentListResponse>(
+        ["documents", investigationId],
+        (old) => {
+          if (!old) return { items: [response], total: 1 };
+          return {
+            ...old,
+            items: [...old.items, response],
+            total: old.total + 1,
+          };
+        },
+      );
+      queryClient.invalidateQueries({
+        queryKey: ["documents", investigationId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["investigations"] });
+    },
+  });
+}
+
 export function useDeleteDocument(investigationId: string) {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
