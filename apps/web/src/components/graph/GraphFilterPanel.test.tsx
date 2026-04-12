@@ -164,4 +164,24 @@ describe("GraphFilterPanel", () => {
     const checkboxes = screen.getAllByRole("checkbox");
     expect(checkboxes).toHaveLength(3);
   });
+
+  it("document filter includes web documents with [Web] prefix", () => {
+    const mixedDocuments = [
+      { id: "doc-1", filename: "report.pdf", document_type: "pdf", status: "completed" as const } as never,
+      { id: "doc-2", filename: "Corporate Registry", document_type: "web", status: "completed" as const } as never,
+      { id: "doc-3", filename: "scan.png", document_type: "image", status: "completed" as const } as never,
+    ];
+
+    renderPanel({ documents: mixedDocuments });
+
+    const select = screen.getByLabelText("Filter by document");
+    expect(select).toBeTruthy();
+
+    // Web document should have [Web] prefix
+    expect(screen.getByText("[Web] Corporate Registry")).toBeTruthy();
+    // PDF should not have prefix
+    expect(screen.getByText("report.pdf")).toBeTruthy();
+    // Image should not have prefix
+    expect(screen.getByText("scan.png")).toBeTruthy();
+  });
 });

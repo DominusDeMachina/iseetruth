@@ -14,6 +14,8 @@ export interface Citation {
   page_start: number;
   page_end: number;
   text_excerpt: string;
+  source_url: string | null;
+  document_type: string;
 }
 
 export interface EntityReference {

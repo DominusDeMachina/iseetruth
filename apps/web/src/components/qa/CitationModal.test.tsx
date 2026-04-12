@@ -19,6 +19,20 @@ const sampleCitation: Citation = {
   page_start: 3,
   page_end: 3,
   text_excerpt: "Deputy Mayor Horvat signed the contract",
+  source_url: null,
+  document_type: "pdf",
+};
+
+const sampleWebCitation: Citation = {
+  citation_number: 2,
+  document_id: "d2",
+  document_filename: "Corporate Registry - GreenBuild LLC",
+  chunk_id: "c2",
+  page_start: 1,
+  page_end: 1,
+  text_excerpt: "GreenBuild LLC was registered on March 1",
+  source_url: "https://registry.example.com/greenbuild",
+  document_type: "web",
 };
 
 const sampleChunkData = {
@@ -251,6 +265,84 @@ describe("CitationModal", () => {
 
     const dialogContent = document.querySelector(
       '[aria-label="Source citation from contract-award-089.pdf, page 3"]',
+    );
+    expect(dialogContent).not.toBeNull();
+  });
+
+  it("shows Web Source badge and URL for web citations", () => {
+    mockUseChunkContext.mockReturnValue({
+      data: { ...sampleChunkData, page_start: 1, page_end: 1 },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderModal({ citation: sampleWebCitation });
+
+    // Web Source badge
+    const badge = screen.getByTestId("web-source-badge");
+    expect(badge).toBeInTheDocument();
+    expect(badge.textContent).toBe("Web Source");
+
+    // Source URL link
+    const urlLink = screen.getByTestId("citation-source-url");
+    expect(urlLink).toBeInTheDocument();
+    expect(urlLink).toHaveAttribute(
+      "href",
+      "https://registry.example.com/greenbuild",
+    );
+    expect(urlLink).toHaveAttribute("target", "_blank");
+  });
+
+  it("renders external link icon for web citations", () => {
+    mockUseChunkContext.mockReturnValue({
+      data: { ...sampleChunkData, page_start: 1, page_end: 1 },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderModal({ citation: sampleWebCitation });
+
+    const externalLink = screen.getByTestId("citation-external-link");
+    expect(externalLink).toBeInTheDocument();
+    expect(externalLink).toHaveAttribute(
+      "href",
+      "https://registry.example.com/greenbuild",
+    );
+    expect(externalLink).toHaveAttribute("target", "_blank");
+    expect(externalLink).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("does not show Web Source badge for PDF citations", () => {
+    mockUseChunkContext.mockReturnValue({
+      data: sampleChunkData,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderModal({ citation: sampleCitation });
+
+    expect(screen.queryByTestId("web-source-badge")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("citation-source-url")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("citation-external-link"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("sets web-specific aria-label for web citations", () => {
+    mockUseChunkContext.mockReturnValue({
+      data: { ...sampleChunkData, page_start: 1, page_end: 1 },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    renderModal({ citation: sampleWebCitation });
+
+    const dialogContent = document.querySelector(
+      '[aria-label="Source citation from web page Corporate Registry - GreenBuild LLC"]',
     );
     expect(dialogContent).not.toBeNull();
   });
