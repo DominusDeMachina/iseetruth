@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Trash2, FileText } from "lucide-react";
+import { Trash2, FileText, Link2 } from "lucide-react";
 import {
   Card,
   CardHeader,
@@ -69,12 +69,18 @@ export function InvestigationCard({ investigation }: InvestigationCardProps) {
           )}
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-4 text-sm text-[var(--text-muted)]">
+          <div className="flex flex-wrap items-center gap-4 text-sm text-[var(--text-muted)]">
             <span>{createdDate}</span>
             <span className="flex items-center gap-1">
               <FileText className="size-3" />
               {investigation.document_count}
             </span>
+            {(investigation.cross_link_count ?? 0) > 0 && (
+              <span className="flex items-center gap-1 text-[var(--status-info)]">
+                <Link2 className="size-3" />
+                {investigation.cross_link_count} shared
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>

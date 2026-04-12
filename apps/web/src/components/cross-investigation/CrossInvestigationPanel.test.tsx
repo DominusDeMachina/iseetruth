@@ -5,9 +5,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
 
 const mockUseCrossInvestigation = vi.fn();
+const mockUseCrossInvestigationSearch = vi.fn();
 vi.mock("@/hooks/useCrossInvestigation", () => ({
   useCrossInvestigation: (...args: unknown[]) =>
     mockUseCrossInvestigation(...args),
+  useCrossInvestigationSearch: (...args: unknown[]) =>
+    mockUseCrossInvestigationSearch(...args),
+  useDismissCrossMatch: () => ({ mutate: vi.fn() }),
+  useUndismissCrossMatch: () => ({ mutate: vi.fn() }),
 }));
 
 import { CrossInvestigationPanel } from "./CrossInvestigationPanel";
@@ -28,6 +33,10 @@ const defaultProps = {
 describe("CrossInvestigationPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseCrossInvestigationSearch.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+    });
   });
 
   it("renders match cards when data is present", () => {
@@ -132,5 +141,23 @@ describe("CrossInvestigationPanel", () => {
     const retryButton = screen.getByText("Retry");
     await userEvent.click(retryButton);
     expect(mockRefetch).toHaveBeenCalledOnce();
+  });
+
+  it("renders search input", () => {
+    mockUseCrossInvestigation.mockReturnValue({
+      data: { matches: [], total_matches: 0, query_duration_ms: 5 },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    render(
+      createElement(CrossInvestigationPanel, defaultProps),
+      { wrapper: createWrapper() },
+    );
+
+    expect(
+      screen.getByPlaceholderText("Search across investigations..."),
+    ).toBeTruthy();
   });
 });
