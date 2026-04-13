@@ -124,6 +124,33 @@ class InvalidUrlError(DomainError):
         )
 
 
+class EntityMergeError(DomainError):
+    def __init__(self, detail: str = "Entity merge failed"):
+        super().__init__(
+            detail=detail,
+            status_code=422,
+            error_type="entity_merge_failed",
+        )
+
+
+class EntityTypeMismatchError(DomainError):
+    def __init__(self, source_type: str, target_type: str):
+        super().__init__(
+            detail=f"Cannot merge entities of different types: '{source_type}' and '{target_type}'",
+            status_code=422,
+            error_type="entity_type_mismatch",
+        )
+
+
+class EntitySelfMergeError(DomainError):
+    def __init__(self):
+        super().__init__(
+            detail="Cannot merge entity with itself",
+            status_code=422,
+            error_type="entity_self_merge",
+        )
+
+
 class ChunkNotFoundError(DomainError):
     def __init__(self, chunk_id: str):
         super().__init__(

@@ -250,4 +250,21 @@ describe("EntityDetailCard", () => {
     const editBtn = screen.getByLabelText("Edit entity");
     expect(editBtn).toBeTruthy();
   });
+
+  it("shows merge button in header", () => {
+    mockUseEntityDetail.mockReturnValue({
+      data: mockEntityData,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(createElement(EntityDetailCard, defaultProps), {
+      wrapper: createWrapper(),
+    });
+
+    const mergeBtn = screen.getByLabelText("Merge entity");
+    expect(mergeBtn).toBeTruthy();
+  });
 });

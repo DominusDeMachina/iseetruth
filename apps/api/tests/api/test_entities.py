@@ -6,11 +6,18 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.exceptions import EntityDuplicateError
+from app.exceptions import (
+    EntityDuplicateError,
+    EntityMergeError,
+    EntitySelfMergeError,
+    EntityTypeMismatchError,
+)
 from app.schemas.entity import (
     EntityDetailResponse,
     EntityListItem,
     EntityListResponse,
+    EntityMergePreview,
+    EntityMergeResponse,
     EntityRelationship,
     EntitySource,
     EntityTypeSummary,
@@ -475,3 +482,335 @@ class TestEntityResponseFields:
         assert data["source"] == "manual"
         assert data["source_annotation"] == "Found in records"
         assert data["aliases"] == ["Old Name"]
+
+
+# ---------------------------------------------------------------------------
+# Merge entity helpers and constants
+# ---------------------------------------------------------------------------
+
+SOURCE_ENTITY_ID = "ssssssss-ssss-ssss-ssss-ssssssssssss"
+TARGET_ENTITY_ID = "tttttttt-tttt-tttt-tttt-tttttttttttt"
+
+
+def _source_entity() -> EntityDetailResponse:
+    return EntityDetailResponse(
+        id=SOURCE_ENTITY_ID,
+        name="Dep. Mayor Horvat",
+        type="person",
+        confidence_score=0.8,
+        investigation_id=INVESTIGATION_ID,
+        relationships=[
+            EntityRelationship(
+                relation_type="WORKS_FOR",
+                target_id="org1",
+                target_name="City Hall",
+                target_type="organization",
+                confidence_score=0.7,
+            )
+        ],
+        sources=[
+            EntitySource(
+                document_id="doc1",
+                document_filename="contract.pdf",
+                chunk_id="chunk1",
+                page_start=1,
+                page_end=2,
+                text_excerpt="Dep. Mayor Horvat signed the contract.",
+            )
+        ],
+        evidence_strength="single_source",
+    )
+
+
+def _target_entity() -> EntityDetailResponse:
+    return EntityDetailResponse(
+        id=TARGET_ENTITY_ID,
+        name="Deputy Mayor Horvat",
+        type="person",
+        confidence_score=0.9,
+        investigation_id=INVESTIGATION_ID,
+        relationships=[
+            EntityRelationship(
+                relation_type="KNOWS",
+                target_id="p1",
+                target_name="Marko Petrovic",
+                target_type="person",
+                confidence_score=0.85,
+            )
+        ],
+        sources=[
+            EntitySource(
+                document_id="doc2",
+                document_filename="report.pdf",
+                chunk_id="chunk2",
+                page_start=3,
+                page_end=4,
+                text_excerpt="Deputy Mayor Horvat met with Petrovic.",
+            )
+        ],
+        evidence_strength="single_source",
+    )
+
+
+def _merge_preview() -> EntityMergePreview:
+    return EntityMergePreview(
+        source_entity=_source_entity(),
+        target_entity=_target_entity(),
+        duplicate_relationships=[],
+        total_relationships_after=2,
+        total_sources_after=2,
+    )
+
+
+def _merge_response(**overrides) -> EntityMergeResponse:
+    merged = _target_entity().model_copy(
+        update={"aliases": ["Dep. Mayor Horvat"], "confidence_score": 0.9}
+    )
+    defaults = dict(
+        merged_entity=merged,
+        relationships_transferred=1,
+        citations_transferred=1,
+        aliases_added=["Dep. Mayor Horvat"],
+        duplicate_relationships_consolidated=0,
+    )
+    defaults.update(overrides)
+    return EntityMergeResponse(**defaults)
+
+
+class TestMergePreview:
+    """Tests for POST /investigations/{id}/entities/merge/preview."""
+
+    def test_preview_returns_200(self, entity_client):
+        preview = _merge_preview()
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.get_entity_detail = AsyncMock(
+                side_effect=[_source_entity(), _target_entity()]
+            )
+            mock_svc.preview_merge = AsyncMock(return_value=preview)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.post(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/merge/preview",
+                json={
+                    "source_entity_id": SOURCE_ENTITY_ID,
+                    "target_entity_id": TARGET_ENTITY_ID,
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["source_entity"]["id"] == SOURCE_ENTITY_ID
+        assert data["target_entity"]["id"] == TARGET_ENTITY_ID
+        assert data["total_relationships_after"] == 2
+        assert data["total_sources_after"] == 2
+
+    def test_preview_source_not_found_returns_404(self, entity_client):
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.get_entity_detail = AsyncMock(return_value=None)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.post(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/merge/preview",
+                json={
+                    "source_entity_id": "nonexistent",
+                    "target_entity_id": TARGET_ENTITY_ID,
+                },
+            )
+
+        assert response.status_code == 404
+
+    def test_preview_self_merge_returns_422(self, entity_client):
+        response = entity_client.post(
+            f"/api/v1/investigations/{INVESTIGATION_ID}/entities/merge/preview",
+            json={
+                "source_entity_id": SOURCE_ENTITY_ID,
+                "target_entity_id": SOURCE_ENTITY_ID,
+            },
+        )
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "entity_self_merge" in data["type"]
+
+    def test_preview_type_mismatch_returns_422(self, entity_client):
+        source = _source_entity()
+        target = _target_entity().model_copy(update={"type": "organization"})
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.get_entity_detail = AsyncMock(
+                side_effect=[source, target]
+            )
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.post(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/merge/preview",
+                json={
+                    "source_entity_id": SOURCE_ENTITY_ID,
+                    "target_entity_id": TARGET_ENTITY_ID,
+                },
+            )
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "entity_type_mismatch" in data["type"]
+
+
+class TestMergeEntities:
+    """Tests for POST /investigations/{id}/entities/merge."""
+
+    def test_merge_returns_200(self, entity_client):
+        resp = _merge_response()
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls, \
+             patch("app.api.v1.entities.EventPublisher"):
+            mock_svc = AsyncMock()
+            mock_svc.get_entity_detail = AsyncMock(
+                side_effect=[_source_entity(), _target_entity()]
+            )
+            mock_svc.merge_entities = AsyncMock(return_value=resp)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.post(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/merge",
+                json={
+                    "source_entity_id": SOURCE_ENTITY_ID,
+                    "target_entity_id": TARGET_ENTITY_ID,
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["relationships_transferred"] == 1
+        assert data["citations_transferred"] == 1
+        assert "Dep. Mayor Horvat" in data["aliases_added"]
+
+    def test_merge_with_primary_name(self, entity_client):
+        resp = _merge_response(
+            merged_entity=_target_entity().model_copy(
+                update={
+                    "name": "Dep. Mayor Horvat",
+                    "aliases": ["Deputy Mayor Horvat"],
+                }
+            ),
+            aliases_added=["Deputy Mayor Horvat"],
+        )
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls, \
+             patch("app.api.v1.entities.EventPublisher"):
+            mock_svc = AsyncMock()
+            mock_svc.get_entity_detail = AsyncMock(
+                side_effect=[_source_entity(), _target_entity()]
+            )
+            mock_svc.merge_entities = AsyncMock(return_value=resp)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.post(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/merge",
+                json={
+                    "source_entity_id": SOURCE_ENTITY_ID,
+                    "target_entity_id": TARGET_ENTITY_ID,
+                    "primary_name": "Dep. Mayor Horvat",
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["merged_entity"]["name"] == "Dep. Mayor Horvat"
+
+    def test_merge_consolidates_duplicates(self, entity_client):
+        resp = _merge_response(duplicate_relationships_consolidated=1)
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls, \
+             patch("app.api.v1.entities.EventPublisher"):
+            mock_svc = AsyncMock()
+            mock_svc.get_entity_detail = AsyncMock(
+                side_effect=[_source_entity(), _target_entity()]
+            )
+            mock_svc.merge_entities = AsyncMock(return_value=resp)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.post(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/merge",
+                json={
+                    "source_entity_id": SOURCE_ENTITY_ID,
+                    "target_entity_id": TARGET_ENTITY_ID,
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["duplicate_relationships_consolidated"] == 1
+
+    def test_merge_self_returns_422(self, entity_client):
+        response = entity_client.post(
+            f"/api/v1/investigations/{INVESTIGATION_ID}/entities/merge",
+            json={
+                "source_entity_id": SOURCE_ENTITY_ID,
+                "target_entity_id": SOURCE_ENTITY_ID,
+            },
+        )
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "entity_self_merge" in data["type"]
+
+    def test_merge_source_not_found_returns_404(self, entity_client):
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.get_entity_detail = AsyncMock(return_value=None)
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.post(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/merge",
+                json={
+                    "source_entity_id": "nonexistent",
+                    "target_entity_id": TARGET_ENTITY_ID,
+                },
+            )
+
+        assert response.status_code == 404
+
+    def test_merge_type_mismatch_returns_422(self, entity_client):
+        source = _source_entity()
+        target = _target_entity().model_copy(update={"type": "organization"})
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls:
+            mock_svc = AsyncMock()
+            mock_svc.get_entity_detail = AsyncMock(
+                side_effect=[source, target]
+            )
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.post(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/merge",
+                json={
+                    "source_entity_id": SOURCE_ENTITY_ID,
+                    "target_entity_id": TARGET_ENTITY_ID,
+                },
+            )
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "entity_type_mismatch" in data["type"]
+
+    def test_merge_transaction_failure_returns_422(self, entity_client):
+        with patch("app.api.v1.entities.EntityQueryService") as mock_cls, \
+             patch("app.api.v1.entities.EventPublisher"):
+            mock_svc = AsyncMock()
+            mock_svc.get_entity_detail = AsyncMock(
+                side_effect=[_source_entity(), _target_entity()]
+            )
+            mock_svc.merge_entities = AsyncMock(
+                side_effect=EntityMergeError("Neo4j transaction failed")
+            )
+            mock_cls.return_value = mock_svc
+
+            response = entity_client.post(
+                f"/api/v1/investigations/{INVESTIGATION_ID}/entities/merge",
+                json={
+                    "source_entity_id": SOURCE_ENTITY_ID,
+                    "target_entity_id": TARGET_ENTITY_ID,
+                },
+            )
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "entity_merge_failed" in data["type"]
