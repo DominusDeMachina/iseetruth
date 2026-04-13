@@ -6,12 +6,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useDocumentText } from "@/hooks/useDocuments";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2, ScanText } from "lucide-react";
 
 interface DocumentTextViewerProps {
   investigationId: string;
   documentId: string | null;
   onOpenChange: (open: boolean) => void;
+  /** Document type: "pdf", "image", or "web" */
+  documentType?: string;
+  /** OCR quality level for image documents: "high", "medium", "low" */
+  ocrQuality?: string | null;
 }
 
 function parsePages(text: string) {
@@ -34,12 +38,22 @@ function parsePages(text: string) {
   return pages;
 }
 
+const qualityLabels: Record<string, string> = {
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
+
 export function DocumentTextViewer({
   investigationId,
   documentId,
   onOpenChange,
+  documentType,
+  ocrQuality,
 }: DocumentTextViewerProps) {
   const { data, isLoading, isError } = useDocumentText(investigationId, documentId);
+
+  const isImage = documentType === "image";
 
   return (
     <Dialog open={!!documentId} onOpenChange={onOpenChange}>
@@ -79,6 +93,31 @@ export function DocumentTextViewer({
 
           {!isLoading && !isError && data?.extracted_text && (
             <div className="space-y-4" data-testid="text-content">
+              {isImage && (
+                <div
+                  className={`flex items-start gap-2 rounded-md px-3 py-2 text-sm ${
+                    ocrQuality === "low"
+                      ? "bg-[var(--status-warning)]/10 text-[var(--status-warning)]"
+                      : "bg-[var(--bg-hover)] text-[var(--text-secondary)]"
+                  }`}
+                  data-testid="ocr-source-banner"
+                >
+                  <ScanText className="size-4 shrink-0 mt-0.5" />
+                  <div>
+                    <span>
+                      Text extracted via Tesseract OCR
+                      {ocrQuality && ` \u2014 ${qualityLabels[ocrQuality] ?? ocrQuality} confidence`}
+                    </span>
+                    {ocrQuality === "low" && (
+                      <p className="flex items-center gap-1 mt-1 text-xs">
+                        <AlertTriangle className="size-3 shrink-0" />
+                        Some text may be inaccurate — manual review recommended
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {parsePages(data.extracted_text).map((page) => (
                 <div key={page.pageNumber}>
                   <div className="flex items-center gap-2 mb-2">

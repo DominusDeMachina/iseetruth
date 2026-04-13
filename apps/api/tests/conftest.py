@@ -210,6 +210,7 @@ def sample_document(sample_document_id, sample_investigation_id):
     doc.page_count = 5
     doc.entity_count = None
     doc.extraction_confidence = None
+    doc.ocr_confidence = None
     doc.extracted_text = None
     doc.ocr_method = None
     doc.error_message = None

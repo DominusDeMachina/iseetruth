@@ -69,6 +69,7 @@ def _to_response(document, include_text: bool = False) -> DocumentResponse:
         page_count=document.page_count,
         entity_count=document.entity_count,
         extraction_confidence=document.extraction_confidence,
+        ocr_confidence=document.ocr_confidence,
         extracted_text=document.extracted_text if include_text else None,
         ocr_method=document.ocr_method,
         error_message=document.error_message,

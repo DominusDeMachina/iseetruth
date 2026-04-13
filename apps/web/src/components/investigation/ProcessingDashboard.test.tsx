@@ -15,6 +15,8 @@ function makeDoc(
     extracted_text: null,
     error_message: null,
     extraction_quality: null,
+    ocr_quality: null,
+    ocr_confidence: null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     ...overrides,
@@ -112,5 +114,23 @@ describe("ProcessingDashboard", () => {
       />,
     );
     expect(screen.getByText("Live")).toBeInTheDocument();
+  });
+
+  it("shows document type breakdown when mixed types present", () => {
+    const documents = [
+      makeDoc({ id: "1", status: "complete", document_type: "pdf" }),
+      makeDoc({ id: "2", status: "complete", document_type: "pdf" }),
+      makeDoc({ id: "3", status: "complete", document_type: "image" }),
+    ];
+    render(
+      <ProcessingDashboard
+        documents={documents}
+        investigationName="Test"
+        isConnected={false}
+        connectionError={false}
+      />,
+    );
+    expect(screen.getByText(/2 PDFs/)).toBeInTheDocument();
+    expect(screen.getByText(/1 image/)).toBeInTheDocument();
   });
 });

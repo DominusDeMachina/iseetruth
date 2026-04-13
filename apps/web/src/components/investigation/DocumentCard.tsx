@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Eye, FileText, Globe, ImageIcon, RotateCcw, Trash2 } from "lucide-react";
+import { AlertTriangle, Eye, FileText, Globe, ImageIcon, RotateCcw, ScanText, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteDocumentDialog } from "./DeleteDocumentDialog";
@@ -29,6 +29,12 @@ const qualityStyles: Record<string, string> = {
   high: "bg-[var(--status-success)]/15 text-[var(--status-success)] border-[var(--status-success)]/30",
   medium: "bg-[var(--status-warning)]/15 text-[var(--status-warning)] border-[var(--status-warning)]/30 border-dashed",
   low: "bg-[var(--status-warning)]/15 text-[var(--status-warning)] border-[var(--status-warning)]/30 border-dotted",
+};
+
+const ocrQualityTooltips: Record<string, string> = {
+  high: "High: OCR text is clear and well-structured",
+  medium: "Medium: OCR text may have some inaccuracies",
+  low: "Low: OCR detected poor text quality — manual review recommended",
 };
 
 function stageIndex(status: string): number {
@@ -171,6 +177,21 @@ export function DocumentCard({
             {document.extraction_quality.charAt(0).toUpperCase() +
               document.extraction_quality.slice(1)}{" "}
             confidence
+          </Badge>
+        )}
+
+        {document.document_type === "image" && document.ocr_quality && (
+          <Badge
+            variant="outline"
+            className={qualityStyles[document.ocr_quality] ?? ""}
+            title={ocrQualityTooltips[document.ocr_quality] ?? ""}
+          >
+            {document.ocr_quality === "low" && (
+              <AlertTriangle className="size-3 mr-1" />
+            )}
+            <ScanText className="size-3 mr-1" />
+            OCR: {document.ocr_quality.charAt(0).toUpperCase() +
+              document.ocr_quality.slice(1)}
           </Badge>
         )}
 

@@ -29,6 +29,10 @@ export function ProcessingDashboard({
   const remaining = documents.filter((d) => ACTIVE_STATUSES.has(d.status)).length;
   const hasProcessing = remaining > 0;
 
+  const pdfCount = documents.filter((d) => d.document_type === "pdf").length;
+  const imageCount = documents.filter((d) => d.document_type === "image").length;
+  const webCount = documents.filter((d) => d.document_type === "web").length;
+
   // Merge API entities with SSE discoveries (SSE may have entities not yet returned by API)
   const apiNames = new Set(extractedEntities.map((e) => e.name));
   const newFromSSE = discoveredEntities.filter((e) => !apiNames.has(e.entityName));
@@ -54,7 +58,15 @@ export function ProcessingDashboard({
             )}
           </div>
           <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-            {total} documents &middot; {complete} complete &middot; {failed}{" "}
+            {total} document{total !== 1 ? "s" : ""}
+            {(pdfCount > 0 || imageCount > 0 || webCount > 0) && (
+              <> ({[
+                pdfCount > 0 ? `${pdfCount} PDF${pdfCount !== 1 ? "s" : ""}` : null,
+                imageCount > 0 ? `${imageCount} image${imageCount !== 1 ? "s" : ""}` : null,
+                webCount > 0 ? `${webCount} web` : null,
+              ].filter(Boolean).join(", ")})</>
+            )}
+            {" "}&middot; {complete} complete &middot; {failed}{" "}
             failed &middot; {remaining} remaining
           </p>
         </div>

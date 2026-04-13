@@ -133,6 +133,44 @@ def test_get_document_returns_200(
     assert data["filename"] == "test-report.pdf"
 
 
+def test_get_document_includes_ocr_confidence_fields(
+    investigation_client,
+    mock_document_service,
+    sample_investigation_id,
+    sample_document_id,
+    sample_document,
+):
+    """Document response includes ocr_confidence and computed ocr_quality."""
+    sample_document.document_type = "image"
+    sample_document.ocr_confidence = 0.85
+    sample_document.status = "complete"
+    response = investigation_client.get(
+        f"/api/v1/investigations/{sample_investigation_id}/documents/{sample_document_id}"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ocr_confidence"] == 0.85
+    assert data["ocr_quality"] == "high"
+
+
+def test_get_document_ocr_quality_none_when_no_confidence(
+    investigation_client,
+    mock_document_service,
+    sample_investigation_id,
+    sample_document_id,
+    sample_document,
+):
+    """ocr_quality is None when ocr_confidence is None (e.g., PDF documents)."""
+    sample_document.ocr_confidence = None
+    response = investigation_client.get(
+        f"/api/v1/investigations/{sample_investigation_id}/documents/{sample_document_id}"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ocr_confidence"] is None
+    assert data["ocr_quality"] is None
+
+
 def test_get_document_not_found_returns_404(
     investigation_client, mock_document_service, sample_investigation_id
 ):
@@ -554,12 +592,13 @@ def test_upload_mixed_pdf_and_jpeg(
 
 
 def test_image_extraction_service_returns_text_with_page_marker():
-    """ImageExtractionService wraps OCR text in page marker format."""
+    """ImageExtractionService wraps OCR text in page marker format and returns confidence."""
     with patch("app.services.image_extraction.Image") as mock_pil, \
          patch("app.services.image_extraction.pytesseract") as mock_tess:
+        # Mock image dimensions for quality assessment
         mock_img = MagicMock()
-        mock_img.width = 800
-        mock_img.height = 600
+        mock_img.width = 1000
+        mock_img.height = 1000
         mock_img.__enter__ = MagicMock(return_value=mock_img)
         mock_img.__exit__ = MagicMock(return_value=False)
         mock_pil.open.return_value = mock_img
@@ -569,15 +608,16 @@ def test_image_extraction_service_returns_text_with_page_marker():
         from pathlib import Path
 
         service = ImageExtractionService()
-        text, method = service.extract_text(Path("/fake/image.jpg"), document_id="test-id")
+        text, method, confidence = service.extract_text(Path("/fake/image.jpg"), document_id="test-id")
 
-        assert "--- Page 1 ---" in text
-        assert "Hello World" in text
+        assert text == "--- Page 1 ---\nHello World"
         assert method == "tesseract"
+        assert isinstance(confidence, float)
+        assert 0.0 <= confidence <= 1.0
 
 
 def test_image_extraction_service_empty_ocr_returns_empty_string():
-    """Empty OCR result returns empty string, not an error."""
+    """Empty OCR result returns empty string with 0.0 confidence."""
     with patch("app.services.image_extraction.Image") as mock_pil, \
          patch("app.services.image_extraction.pytesseract") as mock_tess:
         mock_img = MagicMock()
@@ -592,10 +632,11 @@ def test_image_extraction_service_empty_ocr_returns_empty_string():
         from pathlib import Path
 
         service = ImageExtractionService()
-        text, method = service.extract_text(Path("/fake/blank.png"), document_id="test-id")
+        text, method, confidence = service.extract_text(Path("/fake/blank.png"), document_id="test-id")
 
         assert text == ""
         assert method == "tesseract"
+        assert confidence == 0.0
 
 
 def test_process_document_routes_image_to_ocr():
@@ -652,9 +693,9 @@ def test_process_document_routes_image_to_ocr():
         # Setup neo4j
         mock_neo4j.driver.return_value = MagicMock()
 
-        # Setup extraction service to return text and ocr_method
+        # Setup extraction service to return text + method + confidence tuple
         mock_img_instance = MagicMock()
-        mock_img_instance.extract_text.return_value = ("--- Page 1 ---\nExtracted text", "tesseract")
+        mock_img_instance.extract_text.return_value = ("--- Page 1 ---\nExtracted text", "tesseract", 0.75)
         mock_img_svc.return_value = mock_img_instance
 
         # Setup chunking

@@ -75,6 +75,9 @@ function InvestigationDetail() {
   }, [highlightEntityParam]);
 
   const documents = documentsData?.items ?? [];
+  const viewingDocument = viewingDocumentId
+    ? documents.find((d) => d.id === viewingDocumentId) ?? null
+    : null;
   const hasProcessing = documents.some((d) => ACTIVE_STATUSES.has(d.status));
   const activeDoc = documents.find((d) => ACTIVE_STATUSES.has(d.status));
   const activeStageLabel = activeDoc ? (statusLabels[activeDoc.status] ?? activeDoc.status) : undefined;
@@ -264,6 +267,8 @@ function InvestigationDetail() {
       <DocumentTextViewer
         investigationId={id}
         documentId={viewingDocumentId}
+        documentType={viewingDocument?.document_type}
+        ocrQuality={viewingDocument?.ocr_quality}
         onOpenChange={(open) => {
           if (!open) setViewingDocumentId(null);
         }}
@@ -508,6 +513,8 @@ function InvestigationDetail() {
       <DocumentTextViewer
         investigationId={id}
         documentId={viewingDocumentId}
+        documentType={viewingDocument?.document_type}
+        ocrQuality={viewingDocument?.ocr_quality}
         onOpenChange={(open) => {
           if (!open) setViewingDocumentId(null);
         }}

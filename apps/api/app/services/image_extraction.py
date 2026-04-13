@@ -22,25 +22,37 @@ class ImageExtractionService:
         if ollama_base_url:
             self._vision_service = VisionService(ollama_base_url)
 
-    def assess_ocr_quality(self, text: str, file_path: Path) -> float:
+    def assess_ocr_quality(
+        self,
+        text: str,
+        file_path: Path,
+        *,
+        image_width: int | None = None,
+        image_height: int | None = None,
+    ) -> float:
         """Assess Tesseract OCR output quality. Returns 0.0-1.0.
 
         Heuristics:
         - Text density relative to image pixel area
         - Alphanumeric character ratio (gibberish detection)
         - Average word length sanity check
+
+        Pass image_width/image_height to avoid re-opening the file.
         """
         if not text.strip():
             return 0.0
 
         # Factor 1: Text density relative to image size
-        try:
-            with Image.open(file_path) as img:
-                pixel_area = img.width * img.height
-            chars_per_megapixel = len(text) / (pixel_area / 1_000_000) if pixel_area > 0 else 0
-            density_score = min(chars_per_megapixel / 500, 1.0)
-        except Exception:
-            density_score = 0.5  # Default if image can't be re-opened
+        if image_width is not None and image_height is not None:
+            pixel_area = image_width * image_height
+        else:
+            try:
+                with Image.open(file_path) as img:
+                    pixel_area = img.width * img.height
+            except Exception:
+                pixel_area = 1_000_000  # Default to 1MP if image can't be opened
+        chars_per_megapixel = len(text) / (pixel_area / 1_000_000) if pixel_area > 0 else 0
+        density_score = min(chars_per_megapixel / 500, 1.0)
 
         # Factor 2: Alphanumeric ratio (gibberish detection)
         alnum_count = sum(c.isalnum() or c.isspace() for c in text)
@@ -62,19 +74,21 @@ class ImageExtractionService:
         file_path: Path,
         document_id: str = "",
         enhance_with_vision: bool = True,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, float]:
         """Extract text from an image file using Tesseract OCR.
 
         When vision enhancement is enabled and OCR quality is low,
         moondream2 is used to supplement or replace the Tesseract output.
 
-        Returns (page_marked_text, ocr_method) where ocr_method is one of:
-        "tesseract", "tesseract+moondream2", "moondream2".
-        Returns ("", "tesseract") if no text is detected by either method.
+        Returns (page_marked_text, ocr_method, ocr_confidence) where:
+        - ocr_method is one of: "tesseract", "tesseract+moondream2", "moondream2"
+        - ocr_confidence is the Tesseract quality score (0.0-1.0)
+        Returns ("", "tesseract", 0.0) if no text is detected.
         """
-        # Step 1: Run Tesseract OCR
+        # Step 1: Run Tesseract OCR (open once, keep dimensions for quality scoring)
         try:
             with Image.open(file_path) as image:
+                image_width, image_height = image.width, image.height
                 tesseract_text = pytesseract.image_to_string(image)
         except pytesseract.TesseractNotFoundError as exc:
             logger.error(
@@ -91,8 +105,13 @@ class ImageExtractionService:
             )
             raise DocumentProcessingError(document_id, f"Tesseract OCR error: {exc}") from exc
 
-        # Step 2: Assess OCR quality
-        quality_score = self.assess_ocr_quality(tesseract_text, file_path)
+        # Step 2: Assess OCR quality (pass dimensions to avoid re-opening)
+        quality_score = self.assess_ocr_quality(
+            tesseract_text,
+            file_path,
+            image_width=image_width,
+            image_height=image_height,
+        )
         use_vision = (
             enhance_with_vision
             and self._vision_service is not None
@@ -122,7 +141,10 @@ class ImageExtractionService:
                 )
 
         # Step 4: Combine results
-        return self._combine_results(tesseract_text, vision_result, document_id, file_path)
+        text, ocr_method = self._combine_results(
+            tesseract_text, vision_result, document_id, file_path
+        )
+        return text, ocr_method, quality_score
 
     def _combine_results(
         self,

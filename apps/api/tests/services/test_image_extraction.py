@@ -94,7 +94,7 @@ class TestExtractTextWithVision:
             mock_tess.image_to_string.return_value = good_text
             mock_pil.open.return_value = _make_pil_mock(800, 600)
 
-            text, method = service_with_vision.extract_text(img_path, document_id="doc-1")
+            text, method, confidence = service_with_vision.extract_text(img_path, document_id="doc-1")
 
         assert method == "tesseract"
         assert "--- Page 1 ---" in text
@@ -126,7 +126,7 @@ class TestExtractTextWithVision:
             mock_tess.image_to_string.return_value = low_quality_text
             mock_pil.open.return_value = _make_pil_mock(2000, 1500)
 
-            text, method = service_with_vision.extract_text(img_path, document_id="doc-1")
+            text, method, confidence = service_with_vision.extract_text(img_path, document_id="doc-1")
 
         assert method == "tesseract+moondream2"
         assert "[OCR Text]" in text
@@ -154,7 +154,7 @@ class TestExtractTextWithVision:
             mock_tess.image_to_string.return_value = ""
             mock_pil.open.return_value = _make_pil_mock(800, 600)
 
-            text, method = service_with_vision.extract_text(img_path, document_id="doc-1")
+            text, method, confidence = service_with_vision.extract_text(img_path, document_id="doc-1")
 
         assert method == "moondream2"
         assert "[Visual Analysis]" in text
@@ -179,7 +179,7 @@ class TestExtractTextWithVision:
             mock_tess.image_to_string.return_value = low_quality_text
             mock_pil.open.return_value = _make_pil_mock(2000, 1500)
 
-            text, method = service_with_vision.extract_text(img_path, document_id="doc-1")
+            text, method, confidence = service_with_vision.extract_text(img_path, document_id="doc-1")
 
         assert method == "tesseract"
         assert "--- Page 1 ---" in text
@@ -208,7 +208,7 @@ class TestExtractTextWithVision:
             mock_tess.image_to_string.return_value = low_quality_text
             mock_pil.open.return_value = _make_pil_mock(2000, 1500)
 
-            text, method = service_with_vision.extract_text(img_path, document_id="doc-1")
+            text, method, confidence = service_with_vision.extract_text(img_path, document_id="doc-1")
 
         assert method == "tesseract"
 
@@ -223,7 +223,7 @@ class TestExtractTextWithVision:
             mock_tess.image_to_string.return_value = "Some OCR text"
             mock_pil.open.return_value = _make_pil_mock(800, 600)
 
-            text, method = service_no_vision.extract_text(img_path, document_id="doc-1")
+            text, method, confidence = service_no_vision.extract_text(img_path, document_id="doc-1")
 
         assert method == "tesseract"
 
@@ -240,7 +240,7 @@ class TestExtractTextWithVision:
             mock_tess.image_to_string.return_value = low_quality_text
             mock_pil.open.return_value = _make_pil_mock(2000, 1500)
 
-            text, method = service_with_vision.extract_text(
+            text, method, confidence = service_with_vision.extract_text(
                 img_path, document_id="doc-1", enhance_with_vision=False
             )
 
@@ -267,7 +267,7 @@ class TestExtractTextWithVision:
             mock_tess.image_to_string.return_value = ""
             mock_pil.open.return_value = _make_pil_mock(800, 600)
 
-            text, method = service_with_vision.extract_text(img_path, document_id="doc-1")
+            text, method, confidence = service_with_vision.extract_text(img_path, document_id="doc-1")
 
         assert text == ""
         assert method == "tesseract"

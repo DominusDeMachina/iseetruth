@@ -135,10 +135,11 @@ def process_document_task(
                         extractor = ImageExtractionService(
                             ollama_base_url=settings.ollama_base_url
                         )
-                        extracted_text, ocr_method = extractor.extract_text(
+                        extracted_text, ocr_method, ocr_confidence = extractor.extract_text(
                             file_path, document_id=document_id
                         )
                         document.ocr_method = ocr_method
+                        document.ocr_confidence = ocr_confidence
                     else:
                         extractor = TextExtractionService()
                         extracted_text = extractor.extract_text(file_path)
@@ -166,6 +167,7 @@ def process_document_task(
                                 "relationship_count": 0,
                                 "embedded_count": 0,
                                 "extraction_confidence": None,
+                                "ocr_confidence": getattr(document, "ocr_confidence", None),
                             },
                         )
                         return
@@ -457,6 +459,7 @@ def process_document_task(
                         "relationship_count": relationship_count,
                         "embedded_count": emb_summary.embedded_count,
                         "extraction_confidence": avg_confidence,
+                        "ocr_confidence": getattr(document, "ocr_confidence", None),
                     },
                 )
 

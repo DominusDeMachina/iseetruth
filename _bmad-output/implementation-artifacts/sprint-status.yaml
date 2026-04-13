@@ -101,7 +101,7 @@ development_status:
   epic-7: in-progress
   7-1-image-upload-tesseract-ocr-text-extraction: done
   7-2-moondream2-enhanced-image-understanding: done
-  7-3-ocr-quality-confidence-indicators: backlog
+  7-3-ocr-quality-confidence-indicators: done
   epic-7-retrospective: optional
 
   # Epic 8: Manual Entity Curation & Disambiguation
