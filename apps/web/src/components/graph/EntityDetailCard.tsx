@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { X, FileText, MessageSquare, ChevronDown, ChevronUp, Pencil } from "lucide-react";
+import { X, FileText, MessageSquare, ChevronDown, ChevronUp, Pencil, Merge } from "lucide-react";
 import { useEntityDetail } from "@/hooks/useEntityDetail";
 import { ENTITY_COLORS } from "@/lib/entity-constants";
 import { EditEntityDialog } from "./EditEntityDialog";
+import { MergeEntityDialog } from "./MergeEntityDialog";
 
 function confidenceLabel(score: number): string {
   if (score >= 0.8) return "High confidence";
@@ -35,16 +36,17 @@ export function EntityDetailCard({
   );
   const [expanded, setExpanded] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // Close on Escape (suppressed when edit dialog is open)
+  // Close on Escape (suppressed when edit or merge dialog is open)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !editDialogOpen) onClose();
+      if (e.key === "Escape" && !editDialogOpen && !mergeDialogOpen) onClose();
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, editDialogOpen]);
+  }, [onClose, editDialogOpen, mergeDialogOpen]);
 
   // Compute clamped position to keep card within parent container
   const [clampedPos, setClampedPos] = useState(position);
@@ -185,6 +187,13 @@ export function EntityDetailCard({
         </div>
         <div className="flex items-center gap-1 shrink-0 mt-0.5">
           <button
+            onClick={() => setMergeDialogOpen(true)}
+            aria-label="Merge entity"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            <Merge className="size-3.5" />
+          </button>
+          <button
             onClick={() => setEditDialogOpen(true)}
             aria-label="Edit entity"
             className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
@@ -295,6 +304,16 @@ export function EntityDetailCard({
         aliases={data.aliases}
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
+      />
+
+      {/* Merge dialog */}
+      <MergeEntityDialog
+        investigationId={investigationId}
+        sourceEntityId={entityId}
+        sourceEntityName={data.name}
+        sourceEntityType={data.type}
+        open={mergeDialogOpen}
+        onOpenChange={setMergeDialogOpen}
       />
     </div>
   );

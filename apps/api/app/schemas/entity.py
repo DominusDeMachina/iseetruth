@@ -93,3 +93,32 @@ class EntityDetailResponse(BaseModel):
     source: str = "extracted"
     source_annotation: str | None = None
     aliases: list[str] = []
+
+
+class EntityMergeRequest(BaseModel):
+    source_entity_id: str
+    target_entity_id: str
+    primary_name: str | None = None
+
+    @field_validator("source_entity_id", "target_entity_id")
+    @classmethod
+    def id_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Entity ID must not be empty")
+        return v.strip()
+
+
+class EntityMergePreview(BaseModel):
+    source_entity: EntityDetailResponse
+    target_entity: EntityDetailResponse
+    duplicate_relationships: list[str]
+    total_relationships_after: int
+    total_sources_after: int
+
+
+class EntityMergeResponse(BaseModel):
+    merged_entity: EntityDetailResponse
+    relationships_transferred: int
+    citations_transferred: int
+    aliases_added: list[str]
+    duplicate_relationships_consolidated: int

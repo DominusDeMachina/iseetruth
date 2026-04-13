@@ -5,12 +5,14 @@ from neo4j.exceptions import ConstraintError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.exceptions import EntityDuplicateError
+from app.exceptions import EntityDuplicateError, EntityMergeError
 from app.models.document import Document
 from app.schemas.entity import (
     EntityDetailResponse,
     EntityListItem,
     EntityListResponse,
+    EntityMergePreview,
+    EntityMergeResponse,
     EntityRelationship,
     EntitySource,
     EntityTypeSummary,
@@ -180,6 +182,129 @@ class EntityQueryService:
 
         # Return fresh detail
         return await self.get_entity_detail(investigation_id, entity_id)
+
+    async def preview_merge(
+        self,
+        investigation_id: uuid.UUID,
+        source_entity_id: str,
+        target_entity_id: str,
+    ) -> EntityMergePreview | None:
+        """Generate a merge preview showing combined relationships and sources.
+
+        Returns None if either entity is not found.
+        """
+        source = await self.get_entity_detail(investigation_id, source_entity_id)
+        target = await self.get_entity_detail(investigation_id, target_entity_id)
+        if source is None or target is None:
+            return None
+
+        inv_id_str = str(investigation_id)
+
+        # Find duplicate relationships (same type + same third party on both)
+        async with self.neo4j_driver.session() as session:
+            dup_records = await session.execute_read(
+                _fetch_duplicate_relationships,
+                source_entity_id,
+                target_entity_id,
+                inv_id_str,
+            )
+
+        duplicate_rels = [r["rel_type"] for r in dup_records]
+
+        # Calculate totals after merge
+        source_rel_types = {
+            (r.relation_type, r.target_id) for r in source.relationships
+        }
+        target_rel_types = {
+            (r.relation_type, r.target_id) for r in target.relationships
+        }
+        # Unique relationships = union (duplicates consolidated)
+        total_rels = len(source_rel_types | target_rel_types)
+
+        source_citations = {
+            (s.document_id, s.chunk_id) for s in source.sources
+        }
+        target_citations = {
+            (s.document_id, s.chunk_id) for s in target.sources
+        }
+        total_sources = len(source_citations | target_citations)
+
+        return EntityMergePreview(
+            source_entity=source,
+            target_entity=target,
+            duplicate_relationships=duplicate_rels,
+            total_relationships_after=total_rels,
+            total_sources_after=total_sources,
+        )
+
+    async def merge_entities(
+        self,
+        investigation_id: uuid.UUID,
+        source_entity_id: str,
+        target_entity_id: str,
+        primary_name: str | None = None,
+    ) -> EntityMergeResponse:
+        """Merge source entity into target entity atomically.
+
+        All relationships and provenance edges transfer from source to target.
+        Duplicate relationships are consolidated (higher confidence wins).
+        The source entity is deleted after transfer.
+        """
+        inv_id_str = str(investigation_id)
+
+        async with self.neo4j_driver.session() as session:
+            try:
+                merge_counts = await session.execute_write(
+                    _merge_entities_tx,
+                    source_entity_id,
+                    target_entity_id,
+                    inv_id_str,
+                    primary_name,
+                )
+            except Exception as exc:
+                logger.error(
+                    "Entity merge transaction failed",
+                    source_entity_id=source_entity_id,
+                    target_entity_id=target_entity_id,
+                    investigation_id=inv_id_str,
+                    error=str(exc),
+                )
+                raise EntityMergeError(f"Merge transaction failed: {exc}")
+
+        # NOTE: Qdrant stores document chunk embeddings, not entity references.
+        # Entity data lives exclusively in Neo4j. No Qdrant updates needed.
+        logger.debug(
+            "Qdrant update skipped — entities not stored in Qdrant",
+            source_entity_id=source_entity_id,
+            target_entity_id=target_entity_id,
+        )
+
+        # Fetch the updated merged entity detail
+        merged_entity = await self.get_entity_detail(
+            investigation_id, target_entity_id
+        )
+        if merged_entity is None:
+            raise EntityMergeError("Merged entity not found after merge")
+
+        logger.info(
+            "Entity merge completed",
+            source_entity_id=source_entity_id,
+            target_entity_id=target_entity_id,
+            investigation_id=inv_id_str,
+            relationships_transferred=merge_counts["rels_transferred"],
+            citations_transferred=merge_counts["citations_transferred"],
+            duplicates_consolidated=merge_counts["duplicates_consolidated"],
+        )
+
+        return EntityMergeResponse(
+            merged_entity=merged_entity,
+            relationships_transferred=merge_counts["rels_transferred"],
+            citations_transferred=merge_counts["citations_transferred"],
+            aliases_added=merge_counts["aliases_added"],
+            duplicate_relationships_consolidated=merge_counts[
+                "duplicates_consolidated"
+            ],
+        )
 
     async def get_entity_detail(
         self, investigation_id: uuid.UUID, entity_id: str
@@ -410,3 +535,283 @@ async def _update_entity(
         old_name=old_name_to_alias,
         source_annotation=source_annotation,
     )
+
+
+# ---------------------------------------------------------------------------
+# Neo4j merge transaction helpers
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_duplicate_relationships(
+    tx, source_id: str, target_id: str, investigation_id: str
+):
+    """Find relationships where both source and target entities connect
+    to the same third party with the same relationship type (outgoing and incoming)."""
+    # Outgoing duplicates: (source)-[r]->(o) AND (target)-[r]->(o)
+    out_result = await tx.run(
+        "MATCH (s {id: $sid, investigation_id: $inv})-[r1]->(o) "
+        "WHERE type(r1) <> 'MENTIONED_IN' AND o.id <> $tid "
+        "WITH o, type(r1) AS rel_type "
+        "MATCH (t {id: $tid, investigation_id: $inv})-[r2]->(o) "
+        "WHERE type(r2) = rel_type "
+        "RETURN DISTINCT rel_type",
+        sid=source_id,
+        tid=target_id,
+        inv=investigation_id,
+    )
+    out_data = await out_result.data()
+
+    # Incoming duplicates: (o)-[r]->(source) AND (o)-[r]->(target)
+    in_result = await tx.run(
+        "MATCH (o)-[r1]->(s {id: $sid, investigation_id: $inv}) "
+        "WHERE type(r1) <> 'MENTIONED_IN' AND o.id <> $tid "
+        "WITH o, type(r1) AS rel_type "
+        "MATCH (o)-[r2]->(t {id: $tid, investigation_id: $inv}) "
+        "WHERE type(r2) = rel_type "
+        "RETURN DISTINCT rel_type",
+        sid=source_id,
+        tid=target_id,
+        inv=investigation_id,
+    )
+    in_data = await in_result.data()
+
+    # Combine and deduplicate
+    seen = set()
+    combined = []
+    for record in out_data + in_data:
+        rt = record["rel_type"]
+        if rt not in seen:
+            seen.add(rt)
+            combined.append(record)
+    return combined
+
+
+def _validate_rel_type(rtype: str) -> str:
+    """Validate relationship type to prevent Cypher injection.
+
+    Neo4j relationship types are UPPER_SNAKE_CASE by convention.
+    Only allow alphanumeric characters and underscores.
+    """
+    import re
+
+    if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", rtype):
+        raise ValueError(f"Invalid relationship type: {rtype}")
+    return rtype
+
+
+async def _merge_entities_tx(
+    tx,
+    source_id: str,
+    target_id: str,
+    investigation_id: str,
+    primary_name: str | None,
+):
+    """Atomic merge: transfer relationships, citations, aliases, then delete source.
+
+    All steps execute within a single Neo4j write transaction.
+    Returns dict with counts of transferred items.
+    """
+    rels_transferred = 0
+    citations_transferred = 0
+    duplicates_consolidated = 0
+    aliases_added: list[str] = []
+
+    # --- Step A: Transfer outgoing relationships (source)-[r]->(other) ---
+    out_result = await tx.run(
+        "MATCH (s {id: $sid, investigation_id: $inv})-[r]->(o) "
+        "WHERE type(r) <> 'MENTIONED_IN' AND o.id <> $tid "
+        "RETURN type(r) AS rtype, o.id AS oid, "
+        "r.confidence_score AS conf, r.source_chunk_id AS chunk_id",
+        sid=source_id, tid=target_id, inv=investigation_id,
+    )
+    outgoing_rels = await out_result.data()
+
+    for rel in outgoing_rels:
+        rtype = _validate_rel_type(rel["rtype"])
+        # Check if target already has this relationship
+        existing_result = await tx.run(
+            f"MATCH (t {{id: $tid}})-[r:{rtype}]->(o {{id: $oid}}) "
+            "RETURN r.confidence_score AS conf",
+            tid=target_id, oid=rel["oid"],
+        )
+        existing = await existing_result.single()
+        if existing:
+            # Duplicate — consolidate with higher confidence
+            duplicates_consolidated += 1
+            new_conf = rel["conf"] or 0.0
+            old_conf = existing["conf"] or 0.0
+            if new_conf > old_conf:
+                await tx.run(
+                    f"MATCH (t {{id: $tid}})-[r:{rtype}]->(o {{id: $oid}}) "
+                    "SET r.confidence_score = $conf",
+                    tid=target_id, oid=rel["oid"], conf=new_conf,
+                )
+        else:
+            await tx.run(
+                f"MATCH (t {{id: $tid, investigation_id: $inv}}), (o {{id: $oid}}) "
+                f"CREATE (t)-[r:{rtype} {{confidence_score: $conf, "
+                "source_chunk_id: $chunk_id}}]->(o)",
+                tid=target_id, inv=investigation_id, oid=rel["oid"],
+                conf=rel["conf"], chunk_id=rel.get("chunk_id"),
+            )
+            rels_transferred += 1
+
+    # --- Step A (cont.): Transfer incoming relationships (other)-[r]->(source) ---
+    in_result = await tx.run(
+        "MATCH (o)-[r]->(s {id: $sid, investigation_id: $inv}) "
+        "WHERE type(r) <> 'MENTIONED_IN' AND o.id <> $tid "
+        "RETURN type(r) AS rtype, o.id AS oid, "
+        "r.confidence_score AS conf, r.source_chunk_id AS chunk_id",
+        sid=source_id, tid=target_id, inv=investigation_id,
+    )
+    incoming_rels = await in_result.data()
+
+    for rel in incoming_rels:
+        rtype = _validate_rel_type(rel["rtype"])
+        existing_result = await tx.run(
+            f"MATCH (o {{id: $oid}})-[r:{rtype}]->(t {{id: $tid}}) "
+            "RETURN r.confidence_score AS conf",
+            oid=rel["oid"], tid=target_id,
+        )
+        existing = await existing_result.single()
+        if existing:
+            duplicates_consolidated += 1
+            new_conf = rel["conf"] or 0.0
+            old_conf = existing["conf"] or 0.0
+            if new_conf > old_conf:
+                await tx.run(
+                    f"MATCH (o {{id: $oid}})-[r:{rtype}]->(t {{id: $tid}}) "
+                    "SET r.confidence_score = $conf",
+                    oid=rel["oid"], tid=target_id, conf=new_conf,
+                )
+        else:
+            await tx.run(
+                f"MATCH (o {{id: $oid}}), (t {{id: $tid, investigation_id: $inv}}) "
+                f"CREATE (o)-[r:{rtype} {{confidence_score: $conf, "
+                "source_chunk_id: $chunk_id}}]->(t)",
+                oid=rel["oid"], tid=target_id, inv=investigation_id,
+                conf=rel["conf"], chunk_id=rel.get("chunk_id"),
+            )
+            rels_transferred += 1
+
+    # --- Step C: Transfer MENTIONED_IN provenance edges ---
+    mention_result = await tx.run(
+        "MATCH (s {id: $sid, investigation_id: $inv})"
+        "-[m:MENTIONED_IN]->(d:Document) "
+        "RETURN d.id AS doc_id, m.chunk_id AS chunk_id, "
+        "m.page_start AS page_start, m.page_end AS page_end, "
+        "m.text_excerpt AS text_excerpt",
+        sid=source_id, inv=investigation_id,
+    )
+    mentions = await mention_result.data()
+
+    for mention in mentions:
+        # Check if target already has this exact mention
+        existing_mention = await tx.run(
+            "MATCH (t {id: $tid})-[m:MENTIONED_IN {chunk_id: $chunk_id}]->"
+            "(d:Document {id: $doc_id}) "
+            "RETURN m",
+            tid=target_id, chunk_id=mention["chunk_id"],
+            doc_id=mention["doc_id"],
+        )
+        if await existing_mention.single() is None:
+            await tx.run(
+                "MATCH (t {id: $tid, investigation_id: $inv}), "
+                "(d:Document {id: $doc_id, investigation_id: $inv}) "
+                "CREATE (t)-[:MENTIONED_IN {"
+                "chunk_id: $chunk_id, page_start: $page_start, "
+                "page_end: $page_end, text_excerpt: $text_excerpt"
+                "}]->(d)",
+                tid=target_id, inv=investigation_id,
+                doc_id=mention["doc_id"],
+                chunk_id=mention["chunk_id"],
+                page_start=mention["page_start"],
+                page_end=mention["page_end"],
+                text_excerpt=mention["text_excerpt"],
+            )
+            citations_transferred += 1
+
+    # --- Step D: Update aliases, name, and source_annotation ---
+    # Fetch current source and target metadata
+    src_result = await tx.run(
+        "MATCH (s {id: $sid, investigation_id: $inv}) "
+        "RETURN s.name AS name, s.aliases AS aliases, "
+        "s.source_annotation AS source_annotation",
+        sid=source_id, inv=investigation_id,
+    )
+    src_record = await src_result.single()
+
+    tgt_result = await tx.run(
+        "MATCH (t {id: $tid, investigation_id: $inv}) "
+        "RETURN t.name AS name, t.aliases AS aliases, "
+        "t.source_annotation AS source_annotation",
+        tid=target_id, inv=investigation_id,
+    )
+    tgt_record = await tgt_result.single()
+
+    source_name = src_record["name"]
+    source_aliases = src_record["aliases"] or []
+    source_annotation = src_record["source_annotation"]
+    target_name = tgt_record["name"]
+    target_aliases = tgt_record["aliases"] or []
+    target_annotation = tgt_record["source_annotation"]
+
+    # Merge source annotations: append source's annotation to target's
+    merged_annotation = target_annotation
+    if source_annotation:
+        if target_annotation:
+            merged_annotation = f"{target_annotation}\n[Merged] {source_annotation}"
+        else:
+            merged_annotation = source_annotation
+
+    # Build combined aliases list
+    combined_aliases = list(target_aliases)
+    # Add source name as alias if not already present
+    if source_name not in combined_aliases and source_name != target_name:
+        combined_aliases.append(source_name)
+        aliases_added.append(source_name)
+    # Add source aliases if not already present
+    for alias in source_aliases:
+        if alias not in combined_aliases and alias != target_name:
+            combined_aliases.append(alias)
+            aliases_added.append(alias)
+
+    # Handle primary_name selection
+    final_name = target_name
+    if primary_name and primary_name != target_name:
+        # Add the current target name as an alias since we're replacing it
+        if target_name not in combined_aliases:
+            combined_aliases.append(target_name)
+            aliases_added.append(target_name)
+        # Remove primary_name from aliases if it's there (it becomes the main name)
+        combined_aliases = [a for a in combined_aliases if a != primary_name]
+        final_name = primary_name
+
+    # --- Step E: Update target's confidence, name, aliases, and annotation ---
+    await tx.run(
+        "MATCH (s {id: $sid, investigation_id: $inv}) "
+        "MATCH (t {id: $tid, investigation_id: $inv}) "
+        "SET t.confidence_score = CASE "
+        "  WHEN s.confidence_score > t.confidence_score "
+        "  THEN s.confidence_score ELSE t.confidence_score END, "
+        "t.name = $final_name, "
+        "t.aliases = $aliases, "
+        "t.source_annotation = $annotation",
+        sid=source_id, tid=target_id, inv=investigation_id,
+        final_name=final_name, aliases=combined_aliases,
+        annotation=merged_annotation,
+    )
+
+    # --- Step F: Delete source entity and all its remaining relationships ---
+    await tx.run(
+        "MATCH (s {id: $sid, investigation_id: $inv}) "
+        "DETACH DELETE s",
+        sid=source_id, inv=investigation_id,
+    )
+
+    return {
+        "rels_transferred": rels_transferred,
+        "citations_transferred": citations_transferred,
+        "duplicates_consolidated": duplicates_consolidated,
+        "aliases_added": aliases_added,
+    }
